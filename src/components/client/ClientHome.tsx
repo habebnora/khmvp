@@ -50,7 +50,7 @@ const translations = {
   ar: {
     searchPlaceholder: 'ابحثي عن خالة...',
     availableNow: 'متاحة الآن',
-    years: 'سنو��ت خبرة',
+    years: 'سنوات خبرة',
     perHour: 'جنيه/ساعة',
     reviews: 'تقييم',
     viewProfile: 'عرض الملف',
@@ -88,7 +88,7 @@ export default function ClientHome({ language }: ClientHomeProps) {
       id: 1,
       type: 'booking',
       title: language === 'ar' ? 'تم تأكيد الحجز' : 'Booking Confirmed',
-      message: language === 'ar' 
+      message: language === 'ar'
         ? 'تم تأكيد حجزك مع فاطمة أحمد ليوم 25 نوفمبر الساعة 10:00 صباحاً'
         : 'Your booking with Fatima Ahmed for November 25 at 10:00 AM has been confirmed',
       time: language === 'ar' ? '10 دقائق' : '10 mins',
@@ -153,156 +153,156 @@ export default function ClientHome({ language }: ClientHomeProps) {
   ];
 
   const mockSitters: Sitter[] = [
-  {
-    id: 1,
-    name: language === 'ar' ? 'فاطمة أحمد' : 'Fatima Ahmed',
-    image: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400',
-    rating: 4.8,
-    reviews: 124,
-    experience: 5,
-    location: language === 'ar' ? 'المنيا الجديدة' : 'New Minya',
-    available: true,
-    availabilityType: 'both',
-    languages: ['العربية', 'English'],
-    specialties: [language === 'ar' ? 'رعاية أطفال' : 'Childcare', language === 'ar' ? 'تعليم' : 'Education'],
-    services: [
-      {
-        id: '1-1',
-        name: language === 'ar' ? 'مجالسة أطفال من 5-12 سنة' : 'Childcare Ages 5-12',
-        description: language === 'ar' ? 'رعاية ومجالسة أطفال من سن 5 إلى 12 سنة مع أنشطة تعليمية وترفيهية' : 'Care and supervision for children aged 5-12 with educational and fun activities',
-        pricePerHour: 50,
-        minHours: 2
-      },
-      {
-        id: '1-2',
-        name: language === 'ar' ? 'مجالسة وتعليم (2-4 سنوات)' : 'Childcare & Education (Ages 2-4)',
-        description: language === 'ar' ? 'رعاية وتعليم الأطفال من سن سنتين إلى 4 سنوات مع أنشطة تنمية المهارات' : 'Care and education for toddlers aged 2-4 with skill development activities',
-        pricePerHour: 60,
-        minHours: 3
-      }
-    ]
-  },
-  {
-    id: 2,
-    name: language === 'ar' ? 'نورهان محمد' : 'Nourhan Mohamed',
-    image: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400',
-    rating: 4.9,
-    reviews: 98,
-    experience: 7,
-    location: language === 'ar' ? 'المنيا' : 'Minya',
-    available: true,
-    availabilityType: 'outside',
-    languages: ['العربية', 'English', 'Français'],
-    specialties: [language === 'ar' ? 'رعاية رضع' : 'Infant Care', language === 'ar' ? 'طبخ' : 'Cooking'],
-    services: [
-      {
-        id: '2-1',
-        name: language === 'ar' ? 'رعاية رضع (0-2 سنة)' : 'Infant Care (0-2 years)',
-        description: language === 'ar' ? 'رعاية متخصصة للرضع والأطفال حديثي الولادة مع خبرة في الرضاعة والنوم' : 'Specialized care for infants and newborns with expertise in feeding and sleep routines',
-        pricePerHour: 70,
-        minHours: 3
-      },
-      {
-        id: '2-2',
-        name: language === 'ar' ? 'رعاية رضع وإعداد طعام' : 'Infant Care with Meal Prep',
-        description: language === 'ar' ? 'رعاية الرضع مع إعداد وجبات صحية للطفل' : 'Infant care with healthy meal preparation for the child',
-        pricePerHour: 85,
-        minHours: 4
-      }
-    ]
-  },
-  {
-    id: 3,
-    name: language === 'ar' ? 'سارة حسن' : 'Sara Hassan',
-    image: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400',
-    rating: 4.7,
-    reviews: 156,
-    experience: 4,
-    location: language === 'ar' ? 'المنيا الجديدة' : 'New Minya',
-    available: false,
-    availabilityType: 'home',
-    languages: ['العربية'],
-    specialties: [language === 'ar' ? 'ألعاب تعليمية' : 'Educational Games'],
-    services: [
-      {
-        id: '3-1',
-        name: language === 'ar' ? 'ألعاب تعليمية وتنمية مهارات' : 'Educational Games & Skills Development',
-        description: language === 'ar' ? 'أنشطة وألعاب تعليمية لتنمية المهارات الذهنية والحركية للأطفال' : 'Educational activities and games for mental and physical skills development',
-        pricePerHour: 45,
-        minHours: 2
-      },
-      {
-        id: '3-2',
-        name: language === 'ar' ? 'مساعدة في الواجبات المدرسية' : 'Homework Help',
-        description: language === 'ar' ? 'مساعدة الأطفال في الواجبات المدرسية والمذاكرة' : 'Help children with homework and studying',
-        pricePerHour: 40,
-        minHours: 2
-      }
-    ]
-  },
-  {
-    id: 4,
-    name: language === 'ar' ? 'منى عبدالله' : 'Mona Abdullah',
-    image: 'https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?w=400',
-    rating: 5.0,
-    reviews: 203,
-    experience: 10,
-    location: language === 'ar' ? 'المنيا' : 'Minya',
-    available: true,
-    availabilityType: 'both',
-    languages: ['العربية', 'English'],
-    specialties: [language === 'ar' ? 'رعاية خاصة' : 'Special Care', language === 'ar' ? 'إسعافات أولية' : 'First Aid'],
-    services: [
-      {
-        id: '4-1',
-        name: language === 'ar' ? 'رعاية ذوي الاحتياجات الخاصة' : 'Special Needs Care',
-        description: language === 'ar' ? 'رعاية متخصصة للأطفال ذوي الاحتياجات الخاصة مع خبرة في التعامل معهم' : 'Specialized care for children with special needs with expertise in handling them',
-        pricePerHour: 90,
-        minHours: 3
-      },
-      {
-        id: '4-2',
-        name: language === 'ar' ? 'رعاية أطفال (جميع الأعمار)' : 'Childcare (All Ages)',
-        description: language === 'ar' ? 'رعاية شاملة للأطفال من جميع الأعمار مع خبرة واسعة' : 'Comprehensive care for children of all ages with extensive experience',
-        pricePerHour: 65,
-        minHours: 2
-      }
-    ]
-  },
-  {
-    id: 5,
-    name: language === 'ar' ? 'ياسمين علي' : 'Yasmine Ali',
-    image: 'https://images.unsplash.com/photo-1489424731084-a5d8b219a5bb?w=400',
-    rating: 4.6,
-    reviews: 87,
-    experience: 3,
-    location: language === 'ar' ? 'المنيا الجديدة' : 'New Minya',
-    available: true,
-    availabilityType: 'home',
-    languages: ['العربية'],
-    specialties: [language === 'ar' ? 'فنون وحرف' : 'Arts & Crafts'],
-    services: [
-      {
-        id: '5-1',
-        name: language === 'ar' ? 'فنون وأشغال يدوية' : 'Arts & Crafts',
-        description: language === 'ar' ? 'أنشطة فنية وأشغال يدوية لتنمية الإبداع عند الأطفال' : 'Arts and crafts activities to develop creativity in children',
-        pricePerHour: 55,
-        minHours: 2
-      },
-      {
-        id: '5-2',
-        name: language === 'ar' ? 'مجالسة أطفال (3-8 سنوات)' : 'Childcare (Ages 3-8)',
-        description: language === 'ar' ? 'رعاية ومجالسة أطفال من سن 3 إلى 8 سنوات' : 'Care and supervision for children aged 3-8',
-        pricePerHour: 48,
-        minHours: 2
-      }
-    ]
-  }
-];
+    {
+      id: 1,
+      name: language === 'ar' ? 'فاطمة أحمد' : 'Fatima Ahmed',
+      image: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400',
+      rating: 4.8,
+      reviews: 124,
+      experience: 5,
+      location: language === 'ar' ? 'المنيا الجديدة' : 'New Minya',
+      available: true,
+      availabilityType: 'both',
+      languages: ['العربية', 'English'],
+      specialties: [language === 'ar' ? 'رعاية أطفال' : 'Childcare', language === 'ar' ? 'تعليم' : 'Education'],
+      services: [
+        {
+          id: '1-1',
+          name: language === 'ar' ? 'مجالسة أطفال من 5-12 سنة' : 'Childcare Ages 5-12',
+          description: language === 'ar' ? 'رعاية ومجالسة أطفال من سن 5 إلى 12 سنة مع أنشطة تعليمية وترفيهية' : 'Care and supervision for children aged 5-12 with educational and fun activities',
+          pricePerHour: 50,
+          minHours: 2
+        },
+        {
+          id: '1-2',
+          name: language === 'ar' ? 'مجالسة وتعليم (2-4 سنوات)' : 'Childcare & Education (Ages 2-4)',
+          description: language === 'ar' ? 'رعاية وتعليم الأطفال من سن سنتين إلى 4 سنوات مع أنشطة تنمية المهارات' : 'Care and education for toddlers aged 2-4 with skill development activities',
+          pricePerHour: 60,
+          minHours: 3
+        }
+      ]
+    },
+    {
+      id: 2,
+      name: language === 'ar' ? 'نورهان محمد' : 'Nourhan Mohamed',
+      image: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400',
+      rating: 4.9,
+      reviews: 98,
+      experience: 7,
+      location: language === 'ar' ? 'المنيا' : 'Minya',
+      available: true,
+      availabilityType: 'outside',
+      languages: ['العربية', 'English', 'Français'],
+      specialties: [language === 'ar' ? 'رعاية رضع' : 'Infant Care', language === 'ar' ? 'طبخ' : 'Cooking'],
+      services: [
+        {
+          id: '2-1',
+          name: language === 'ar' ? 'رعاية رضع (0-2 سنة)' : 'Infant Care (0-2 years)',
+          description: language === 'ar' ? 'رعاية متخصصة للرضع والأطفال حديثي الولادة مع خبرة في الرضاعة والنوم' : 'Specialized care for infants and newborns with expertise in feeding and sleep routines',
+          pricePerHour: 70,
+          minHours: 3
+        },
+        {
+          id: '2-2',
+          name: language === 'ar' ? 'رعاية رضع وإعداد طعام' : 'Infant Care with Meal Prep',
+          description: language === 'ar' ? 'رعاية الرضع مع إعداد وجبات صحية للطفل' : 'Infant care with healthy meal preparation for the child',
+          pricePerHour: 85,
+          minHours: 4
+        }
+      ]
+    },
+    {
+      id: 3,
+      name: language === 'ar' ? 'سارة حسن' : 'Sara Hassan',
+      image: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400',
+      rating: 4.7,
+      reviews: 156,
+      experience: 4,
+      location: language === 'ar' ? 'المنيا الجديدة' : 'New Minya',
+      available: false,
+      availabilityType: 'home',
+      languages: ['العربية'],
+      specialties: [language === 'ar' ? 'ألعاب تعليمية' : 'Educational Games'],
+      services: [
+        {
+          id: '3-1',
+          name: language === 'ar' ? 'ألعاب تعليمية وتنمية مهارات' : 'Educational Games & Skills Development',
+          description: language === 'ar' ? 'أنشطة وألعاب تعليمية لتنمية المهارات الذهنية والحركية للأطفال' : 'Educational activities and games for mental and physical skills development',
+          pricePerHour: 45,
+          minHours: 2
+        },
+        {
+          id: '3-2',
+          name: language === 'ar' ? 'مساعدة في الواجبات المدرسية' : 'Homework Help',
+          description: language === 'ar' ? 'مساعدة الأطفال في الواجبات المدرسية والمذاكرة' : 'Help children with homework and studying',
+          pricePerHour: 40,
+          minHours: 2
+        }
+      ]
+    },
+    {
+      id: 4,
+      name: language === 'ar' ? 'منى عبدالله' : 'Mona Abdullah',
+      image: 'https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?w=400',
+      rating: 5.0,
+      reviews: 203,
+      experience: 10,
+      location: language === 'ar' ? 'المنيا' : 'Minya',
+      available: true,
+      availabilityType: 'both',
+      languages: ['العربية', 'English'],
+      specialties: [language === 'ar' ? 'رعاية خاصة' : 'Special Care', language === 'ar' ? 'إسعافات أولية' : 'First Aid'],
+      services: [
+        {
+          id: '4-1',
+          name: language === 'ar' ? 'رعاية ذوي الاحتياجات الخاصة' : 'Special Needs Care',
+          description: language === 'ar' ? 'رعاية متخصصة للأطفال ذوي الاحتياجات الخاصة مع خبرة في التعامل معهم' : 'Specialized care for children with special needs with expertise in handling them',
+          pricePerHour: 90,
+          minHours: 3
+        },
+        {
+          id: '4-2',
+          name: language === 'ar' ? 'رعاية أطفال (جميع الأعمار)' : 'Childcare (All Ages)',
+          description: language === 'ar' ? 'رعاية شاملة للأطفال من جميع الأعمار مع خبرة واسعة' : 'Comprehensive care for children of all ages with extensive experience',
+          pricePerHour: 65,
+          minHours: 2
+        }
+      ]
+    },
+    {
+      id: 5,
+      name: language === 'ar' ? 'ياسمين علي' : 'Yasmine Ali',
+      image: 'https://images.unsplash.com/photo-1489424731084-a5d8b219a5bb?w=400',
+      rating: 4.6,
+      reviews: 87,
+      experience: 3,
+      location: language === 'ar' ? 'المنيا الجديدة' : 'New Minya',
+      available: true,
+      availabilityType: 'home',
+      languages: ['العربية'],
+      specialties: [language === 'ar' ? 'فنون وحرف' : 'Arts & Crafts'],
+      services: [
+        {
+          id: '5-1',
+          name: language === 'ar' ? 'فنون وأشغال يدوية' : 'Arts & Crafts',
+          description: language === 'ar' ? 'أنشطة فنية وأشغال يدوية لتنمية الإبداع عند الأطفال' : 'Arts and crafts activities to develop creativity in children',
+          pricePerHour: 55,
+          minHours: 2
+        },
+        {
+          id: '5-2',
+          name: language === 'ar' ? 'مجالسة أطفال (3-8 سنوات)' : 'Childcare (Ages 3-8)',
+          description: language === 'ar' ? 'رعاية ومجالسة أطفال من سن 3 إلى 8 سنوات' : 'Care and supervision for children aged 3-8',
+          pricePerHour: 48,
+          minHours: 2
+        }
+      ]
+    }
+  ];
 
   const filteredSitters = mockSitters.filter(sitter => {
     const matchesSearch = sitter.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         sitter.location.toLowerCase().includes(searchQuery.toLowerCase());
+      sitter.location.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesAvailable = !showAvailableOnly || sitter.available;
     return matchesSearch && matchesAvailable;
   });
@@ -363,11 +363,10 @@ export default function ClientHome({ language }: ClientHomeProps) {
                   {mockNotifications.map((notification) => {
                     const IconComponent = notification.icon;
                     return (
-                      <div 
-                        key={notification.id} 
-                        className={`p-4 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors ${
-                          !notification.read ? 'bg-[#FB5E7A]/5' : ''
-                        }`}
+                      <div
+                        key={notification.id}
+                        className={`p-4 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors ${!notification.read ? 'bg-[#FB5E7A]/5' : ''
+                          }`}
                       >
                         <div className="flex gap-3">
                           <div className={`flex-shrink-0 w-8 h-8 rounded-full bg-white dark:bg-gray-700 flex items-center justify-center shadow-sm`}>

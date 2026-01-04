@@ -1,6 +1,6 @@
 {
-      "name": "Product Design Document",
-      "version": "0.1.0",
+      "name": "khala-mvp",
+      "version": "1.0.0",
       "private": true,
       "dependencies": {
             "@capacitor/android": "^7.4.4",

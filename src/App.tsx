@@ -1,10 +1,11 @@
 import { useEffect, lazy, Suspense } from 'react';
 import { Toaster } from 'sonner';
-import ErrorBoundary from './components/ErrorBoundary';
+import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { useAuthStore } from './stores/useAuthStore';
+export type { Language, UserType } from './stores/useAuthStore';
 
 // Lazy load main components for better performance
-const OnboardingPage = lazy(() => import('./components/OnboardingPage'));
+const AuthPage = lazy(() => import('./components/AuthPage'));
 const ClientApp = lazy(() => import('./components/ClientApp'));
 const SitterApp = lazy(() => import('./components/SitterApp'));
 
@@ -29,8 +30,7 @@ function App() {
     isAuthenticated,
     language,
     theme,
-    setUserType,
-    setAuthenticated,
+    isLoading,
     toggleLanguage,
     toggleTheme,
     logout,
@@ -41,6 +41,10 @@ function App() {
   useEffect(() => {
     initialize();
   }, [initialize]);
+
+  if (isLoading) {
+    return <PageLoader />;
+  }
 
   return (
     <ErrorBoundary>
@@ -55,13 +59,8 @@ function App() {
 
         {/* Main Content */}
         <Suspense fallback={<PageLoader />}>
-          {!userType || !isAuthenticated ? (
-            <OnboardingPage
-              language={language}
-              onUserTypeSelect={setUserType}
-              onAuthenticate={setAuthenticated}
-              userType={userType}
-            />
+          {!isAuthenticated ? (
+            <AuthPage />
           ) : userType === 'client' ? (
             <ClientApp
               language={language}

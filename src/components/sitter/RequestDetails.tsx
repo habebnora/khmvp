@@ -1,4 +1,4 @@
-import { Calendar, Clock, MapPin, User, DollarSign, ArrowLeft, ArrowRight, Check, X, AlertCircle, CreditCard } from 'lucide-react';
+import { Calendar, Clock, MapPin, User, ArrowLeft, ArrowRight, Check, X, CreditCard } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -6,7 +6,7 @@ import type { Language } from '../../App';
 import type { ReactNode } from 'react';
 
 export interface BookingRequest {
-  id: number;
+  id: string; // Changed from number to string for UUID
   clientName: string;
   clientImage: string;
   date: string;
@@ -17,7 +17,7 @@ export interface BookingRequest {
   price: number;
   children: number;
   notes?: string;
-  status?: string; 
+  status?: string;
 }
 
 interface RequestDetailsProps {
@@ -138,8 +138,8 @@ export default function RequestDetails({ language, request, onBack, onAccept, on
             <div>
               <h4 className="font-semibold text-green-700 mb-1">{t.paymentConfirmed}</h4>
               <p className="text-sm text-green-600">
-                {language === 'ar' 
-                  ? 'قامت العميلة بالدفع. الحجز مؤكد الآن.' 
+                {language === 'ar'
+                  ? 'قامت العميلة بالدفع. الحجز مؤكد الآن.'
                   : 'Client has paid. Booking is now confirmed.'}
               </p>
             </div>
@@ -174,7 +174,7 @@ export default function RequestDetails({ language, request, onBack, onAccept, on
             <Calendar className="w-5 h-5 text-[#FB5E7A]" />
             {t.bookingInfo}
           </h3>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-4">
               <div className="flex justify-between border-b pb-2">
@@ -199,25 +199,25 @@ export default function RequestDetails({ language, request, onBack, onAccept, on
               <div className="flex justify-between border-b pb-2">
                 <span className="text-gray-600 dark:text-gray-400">{t.type}</span>
                 <Badge className={request.type === 'home' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}>
-                    {request.type === 'home' ? t.atHome : t.outside}
+                  {request.type === 'home' ? t.atHome : t.outside}
                 </Badge>
               </div>
-              
+
               {request.status && (
-                 <div className="flex justify-between border-b pb-2">
-                    <span className="text-gray-600 dark:text-gray-400">{t.status}</span>
-                    {getStatusBadge(request.status)}
-                  </div>
+                <div className="flex justify-between border-b pb-2">
+                  <span className="text-gray-600 dark:text-gray-400">{t.status}</span>
+                  {getStatusBadge(request.status)}
+                </div>
               )}
 
               <div className="flex justify-between border-b pb-2">
                 <span className="text-gray-600 dark:text-gray-400">{t.children}</span>
                 <span className="font-medium">{request.children} {t.child}</span>
               </div>
-               <div className="flex flex-col gap-2 pt-1">
+              <div className="flex flex-col gap-2 pt-1">
                 <span className="text-gray-600 dark:text-gray-400">{t.notes}</span>
                 <p className="text-sm bg-gray-50 dark:bg-gray-800 p-3 rounded-lg min-h-[60px]">
-                    {request.notes || (language === 'ar' ? 'لا توجد ملاحظات' : 'No additional notes')}
+                  {request.notes || (language === 'ar' ? 'لا توجد ملاحظات' : 'No additional notes')}
                 </p>
               </div>
             </div>
@@ -226,29 +226,29 @@ export default function RequestDetails({ language, request, onBack, onAccept, on
 
         {/* Actions */}
         {customActions ? (
-            <div className="pt-4">
-                {customActions}
-            </div>
+          <div className="pt-4">
+            {customActions}
+          </div>
         ) : (
-            onAccept && onDecline && (
-                <div className="flex gap-4 pt-4">
-                    <Button
-                        onClick={onDecline}
-                        variant="outline"
-                        className="flex-1 h-12 border-red-500 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10"
-                    >
-                        <X className="w-5 h-5 mr-2" />
-                        {t.decline}
-                    </Button>
-                    <Button
-                        onClick={onAccept}
-                        className="flex-1 h-12 bg-green-600 hover:bg-green-700 text-white"
-                    >
-                        <Check className="w-5 h-5 mr-2" />
-                        {t.accept}
-                    </Button>
-                </div>
-            )
+          onAccept && onDecline && (
+            <div className="flex gap-4 pt-4">
+              <Button
+                onClick={onDecline}
+                variant="outline"
+                className="flex-1 h-12 border-red-500 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10"
+              >
+                <X className="w-5 h-5 mr-2" />
+                {t.decline}
+              </Button>
+              <Button
+                onClick={onAccept}
+                className="flex-1 h-12 bg-green-600 hover:bg-green-700 text-white"
+              >
+                <Check className="w-5 h-5 mr-2" />
+                {t.accept}
+              </Button>
+            </div>
+          )
         )}
       </div>
     </div>

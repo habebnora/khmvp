@@ -1,5 +1,8 @@
-import { useState } from 'react';
-import { ArrowLeft, ArrowRight, Calendar, Clock, Save, Plus, Trash2, Check, X } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useAuthStore } from '../../stores/useAuthStore';
+import { sitterService } from '../../services/sitter';
+import { toast } from 'sonner';
+import { ArrowLeft, ArrowRight, Clock, Save, Plus, Trash2, Check, X } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import { Label } from '../ui/label';
@@ -8,6 +11,7 @@ import { Calendar as CalendarComponent } from '../ui/calendar';
 import { Input } from '../ui/input';
 import { Checkbox } from '../ui/checkbox';
 import type { Language } from '../../App';
+import type { CheckedState } from '@radix-ui/react-checkbox';
 
 const translations = {
   ar: {
@@ -46,6 +50,7 @@ const translations = {
     morningShift: 'صباحي (8ص - 2م)',
     eveningShift: 'مسائي (2م - 8م)',
     fullDay: 'يوم كامل (8ص - 8م)',
+    error: 'حدث خطأ ما',
   },
   en: {
     back: 'Back',
@@ -83,6 +88,7 @@ const translations = {
     morningShift: 'Morning (8AM - 2PM)',
     eveningShift: 'Evening (2PM - 8PM)',
     fullDay: 'Full Day (8AM - 8PM)',
+    error: 'Something went wrong',
   }
 };
 
@@ -92,21 +98,18 @@ interface TimeSlot {
   to: string;
 }
 
-interface DaySchedule {
-  date: Date;
-  timeSlots: TimeSlot[];
-}
-
 interface AvailabilityManagementProps {
   language: Language;
   onBack?: () => void;
 }
 
 export default function AvailabilityManagement({ language, onBack }: AvailabilityManagementProps) {
+  const { user } = useAuthStore();
   const [selectedDates, setSelectedDates] = useState<Date[] | undefined>(undefined);
   const [schedules, setSchedules] = useState<Record<string, TimeSlot[]>>({});
   const [currentDateIndex, setCurrentDateIndex] = useState(0);
   const [repeatWeekly, setRepeatWeekly] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const t = translations[language];
 
   // Mock booked dates (dates with confirmed bookings)
@@ -120,13 +123,53 @@ export default function AvailabilityManagement({ language, onBack }: Availabilit
     return date.toISOString().split('T')[0];
   };
 
+  useEffect(() => {
+    if (user?.id) {
+      loadAvailability();
+    }
+  }, [user?.id]);
+
+  const loadAvailability = async () => {
+    if (!user?.id) return;
+    try {
+      setIsLoading(true);
+      const data = await sitterService.getAvailability(user.id);
+
+      const newSchedules: Record<string, TimeSlot[]> = {};
+
+      // Group by date
+      data.forEach(slot => {
+        if (slot.date) {
+          if (!newSchedules[slot.date]) newSchedules[slot.date] = [];
+          newSchedules[slot.date].push({
+            id: slot.id,
+            from: slot.start_time.substring(0, 5), // 'HH:MM:SS' -> 'HH:MM'
+            to: slot.end_time.substring(0, 5)
+          });
+        }
+      });
+
+      // Populate selected dates
+      const dates = Object.keys(newSchedules).map(d => new Date(d));
+      setSchedules(newSchedules);
+      if (dates.length > 0) {
+        setSelectedDates(dates);
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error(t.error || 'Failed to load availability');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const currentDate = selectedDates?.[currentDateIndex];
   const currentDateKey = currentDate ? getDateKey(currentDate) : '';
   const currentTimeSlots = currentDateKey ? schedules[currentDateKey] || [] : [];
 
   const addTimeSlot = () => {
     if (!currentDateKey) return;
-    
+
     const newSlot: TimeSlot = {
       id: Date.now().toString(),
       from: '09:00',
@@ -141,7 +184,7 @@ export default function AvailabilityManagement({ language, onBack }: Availabilit
 
   const removeTimeSlot = (slotId: string) => {
     if (!currentDateKey) return;
-    
+
     setSchedules(prev => ({
       ...prev,
       [currentDateKey]: prev[currentDateKey].filter(slot => slot.id !== slotId)
@@ -150,7 +193,7 @@ export default function AvailabilityManagement({ language, onBack }: Availabilit
 
   const updateTimeSlot = (slotId: string, field: 'from' | 'to', value: string) => {
     if (!currentDateKey) return;
-    
+
     setSchedules(prev => ({
       ...prev,
       [currentDateKey]: prev[currentDateKey].map(slot =>
@@ -197,10 +240,42 @@ export default function AvailabilityManagement({ language, onBack }: Availabilit
     setSelectedDates(undefined);
   };
 
-  const saveSchedule = () => {
-    // In real app, this would save to backend
-    console.log('Saving schedules:', schedules);
-    alert(t.saved);
+  const saveSchedule = async () => {
+    if (!user?.id) return;
+    try {
+      setIsLoading(true);
+      const datesToUpdate = Object.keys(schedules);
+
+      // 1. Clear existing non-recurring slots for these dates
+      await sitterService.clearAvailabilityForDates(user.id, datesToUpdate);
+
+      // 2. Prepare new slots
+      const slotsToInsert = [];
+      for (const date of datesToUpdate) {
+        const slots = schedules[date];
+        for (const slot of slots) {
+          slotsToInsert.push({
+            date: date,
+            start_time: slot.from,
+            end_time: slot.to,
+            is_recurring: false, // For now assuming specific dates
+            day_of_week: null
+          });
+        }
+      }
+
+      // 3. Insert new shots
+      if (slotsToInsert.length > 0) {
+        await sitterService.addAvailability(user.id, slotsToInsert);
+      }
+
+      toast.success(t.saved);
+    } catch (error) {
+      console.error(error);
+      toast.error(t.error || 'Failed to save');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const getDayName = (date: Date) => {
@@ -220,7 +295,7 @@ export default function AvailabilityManagement({ language, onBack }: Availabilit
     const day = date.getDate();
     const month = date.getMonth() + 1;
     const year = date.getFullYear();
-    return language === 'ar' 
+    return language === 'ar'
       ? `${day}/${month}/${year}`
       : `${month}/${day}/${year}`;
   };
@@ -228,7 +303,7 @@ export default function AvailabilityManagement({ language, onBack }: Availabilit
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Header */}
-      <div className="bg-white dark:bg-gray-800 shadow-sm sticky top-0 z-10">
+      <div className="bg-white dark:bg-gray-800 shadow-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center gap-4">
             {onBack && (
@@ -271,11 +346,11 @@ export default function AvailabilityManagement({ language, onBack }: Availabilit
                 mode="multiple"
                 selected={selectedDates}
                 onSelect={setSelectedDates}
-                disabled={(date) => {
+                disabled={(date: Date) => {
                   // Disable past dates
                   if (date < new Date(new Date().setHours(0, 0, 0, 0))) return true;
                   // Disable booked dates
-                  return bookedDates.some(bookedDate => 
+                  return bookedDates.some(bookedDate =>
                     getDateKey(bookedDate) === getDateKey(date)
                   );
                 }}
@@ -305,7 +380,7 @@ export default function AvailabilityManagement({ language, onBack }: Availabilit
                     <Checkbox
                       id="repeat-weekly"
                       checked={repeatWeekly}
-                      onCheckedChange={(checked) => setRepeatWeekly(checked as boolean)}
+                      onCheckedChange={(checked: CheckedState) => setRepeatWeekly(checked as boolean)}
                     />
                     <Label htmlFor="repeat-weekly" className="text-sm cursor-pointer">
                       {t.repeatWeekly}
@@ -332,7 +407,7 @@ export default function AvailabilityManagement({ language, onBack }: Availabilit
                 <h2 className="text-lg mb-2">{t.daySchedule}</h2>
                 {selectedDates && selectedDates.length > 0 ? (
                   <div className="flex gap-2 flex-wrap">
-                    {selectedDates.map((date, index) => (
+                    {selectedDates.map((date: Date, index: number) => (
                       <Button
                         key={getDateKey(date)}
                         onClick={() => setCurrentDateIndex(index)}
@@ -363,6 +438,7 @@ export default function AvailabilityManagement({ language, onBack }: Availabilit
                   <div>
                     <Label className="text-sm mb-2 block">{t.quickPresets}</Label>
                     <div className="grid grid-cols-3 gap-2">
+                      {/* Presets buttons */}
                       <Button
                         onClick={() => applyPreset('morning')}
                         variant="outline"

@@ -6,89 +6,9 @@ import { Label } from '../ui/label';
 import { Input } from '../ui/input';
 import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
 import { Alert, AlertDescription } from '../ui/alert';
-import type { Language } from '../../App';
-
-const translations = {
-  ar: {
-    back: 'رجوع',
-    payment: 'الدفع',
-    selectPaymentMethod: 'اختاري طريقة الدفع',
-    creditCard: 'بطاقة بنكية',
-    instaPay: 'إنستا باي',
-    vodafoneCash: 'فودافون كاش',
-    fawry: 'فوري',
-    bookingSummary: 'ملخص الحجز',
-    sitter: 'الخالة',
-    service: 'الخدمة',
-    date: 'التاريخ',
-    duration: 'المدة',
-    hours: 'ساعات',
-    days: 'أيام',
-    totalAmount: 'المبلغ الإجمالي',
-    platformFee: 'رسوم المنصة',
-    finalAmount: 'المبلغ النهائي',
-    egp: 'جنيه',
-    cardNumber: 'رقم البطاقة',
-    cardName: 'الاسم على البطاقة',
-    expiryDate: 'تاريخ الانتهاء',
-    cvv: 'CVV',
-    phoneNumber: 'رقم الهاتف',
-    fawryCode: 'كود الدفع فوري',
-    fawryInstructions: 'استخدمي هذا الكود في أقرب نقطة فوري لإتمام الدفع',
-    payNow: 'ادفعي الآن',
-    processingPayment: 'جاري معالجة الدفع...',
-    paymentSuccessful: 'تم الدفع بنجاح',
-    paymentFailed: 'فشل الدفع',
-    securePayment: 'عملية دفع آمنة ومشفرة',
-    instaPayInstructions: 'ادخلي رقم الهاتف المسجل في إنستا باي',
-    vodafoneCashInstructions: 'ادخلي رقم فودافون كاش',
-    verifyPhone: 'إرسال كود التحقق',
-    verificationCode: 'كود التحقق',
-    confirm: 'تأكيد',
-    resendCode: 'إعادة إرسال الكود',
-  },
-  en: {
-    back: 'Back',
-    payment: 'Payment',
-    selectPaymentMethod: 'Select Payment Method',
-    creditCard: 'Credit/Debit Card',
-    instaPay: 'InstaPay',
-    vodafoneCash: 'Vodafone Cash',
-    fawry: 'Fawry',
-    bookingSummary: 'Booking Summary',
-    sitter: 'Sitter',
-    service: 'Service',
-    date: 'Date',
-    duration: 'Duration',
-    hours: 'hours',
-    days: 'days',
-    totalAmount: 'Total Amount',
-    platformFee: 'Platform Fee',
-    finalAmount: 'Final Amount',
-    egp: 'EGP',
-    cardNumber: 'Card Number',
-    cardName: 'Name on Card',
-    expiryDate: 'Expiry Date',
-    cvv: 'CVV',
-    phoneNumber: 'Phone Number',
-    fawryCode: 'Fawry Payment Code',
-    fawryInstructions: 'Use this code at any Fawry location to complete payment',
-    payNow: 'Pay Now',
-    processingPayment: 'Processing payment...',
-    paymentSuccessful: 'Payment Successful',
-    paymentFailed: 'Payment Failed',
-    securePayment: 'Secure and encrypted payment',
-    instaPayInstructions: 'Enter your InstaPay registered phone number',
-    vodafoneCashInstructions: 'Enter your Vodafone Cash number',
-    verifyPhone: 'Send Verification Code',
-    verificationCode: 'Verification Code',
-    confirm: 'Confirm',
-    resendCode: 'Resend Code',
-  }
-};
+import { useTranslation } from '../../hooks/useTranslation';
 
 interface PaymentPageProps {
-  language: Language;
   bookingData: {
     sitterName: string;
     service: string;
@@ -100,23 +20,24 @@ interface PaymentPageProps {
   onPaymentSuccess: () => void;
 }
 
-export default function PaymentPage({ language, bookingData, onBack, onPaymentSuccess }: PaymentPageProps) {
+export default function PaymentPage({ bookingData, onBack, onPaymentSuccess }: PaymentPageProps) {
+  const { t, language } = useTranslation();
+  const paymentT = t.client.paymentPage;
+
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'instapay' | 'vodafone' | 'fawry'>('card');
   const [isProcessing, setIsProcessing] = useState(false);
   const [showVerification, setShowVerification] = useState(false);
   const [verificationCode, setVerificationCode] = useState('');
   const [fawryCode, setFawryCode] = useState('');
-  
+
   // Card details
   const [cardNumber, setCardNumber] = useState('');
   const [cardName, setCardName] = useState('');
   const [expiryDate, setExpiryDate] = useState('');
   const [cvv, setCvv] = useState('');
-  
+
   // Phone number for mobile wallets
   const [phoneNumber, setPhoneNumber] = useState('');
-
-  const t = translations[language];
 
   const platformFee = bookingData.amount * 0.1; // 10% platform fee
   const finalAmount = bookingData.amount + platformFee;
@@ -169,23 +90,23 @@ export default function PaymentPage({ language, bookingData, onBack, onPaymentSu
 
   const handleVerification = async () => {
     setIsProcessing(true);
-    
+
     // Simulate verification
     await new Promise(resolve => setTimeout(resolve, 1500));
-    
+
     setIsProcessing(false);
     onPaymentSuccess();
   };
 
   const sendVerificationCode = async () => {
     setIsProcessing(true);
-    
+
     // Simulate sending code
     await new Promise(resolve => setTimeout(resolve, 1000));
-    
+
     setShowVerification(true);
     setIsProcessing(false);
-    alert(language === 'ar' ? 'تم إرسال كود التحقق' : 'Verification code sent');
+    alert(paymentT.verificationCodeSent);
   };
 
   return (
@@ -202,7 +123,7 @@ export default function PaymentPage({ language, bookingData, onBack, onPaymentSu
               {language === 'ar' ? <ArrowRight className="size-5" /> : <ArrowLeft className="size-5" />}
             </Button>
             <div className="flex-1">
-              <h1 className="text-xl">{t.payment}</h1>
+              <h1 className="text-xl">{paymentT.payment}</h1>
             </div>
           </div>
         </div>
@@ -211,36 +132,36 @@ export default function PaymentPage({ language, bookingData, onBack, onPaymentSu
       <div className="max-w-4xl mx-auto p-4 space-y-6">
         {/* Booking Summary */}
         <Card className="p-6">
-          <h2 className="text-lg mb-4">{t.bookingSummary}</h2>
+          <h2 className="text-lg mb-4">{paymentT.bookingSummary}</h2>
           <div className="space-y-3">
             <div className="flex justify-between">
-              <span className="text-gray-600 dark:text-gray-400">{t.sitter}</span>
+              <span className="text-gray-600 dark:text-gray-400">{paymentT.sitter}</span>
               <span>{bookingData.sitterName}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600 dark:text-gray-400">{t.service}</span>
+              <span className="text-gray-600 dark:text-gray-400">{paymentT.service}</span>
               <span>{bookingData.service}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600 dark:text-gray-400">{t.date}</span>
+              <span className="text-gray-600 dark:text-gray-400">{paymentT.date}</span>
               <span>{bookingData.date}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600 dark:text-gray-400">{t.duration}</span>
-              <span>{bookingData.duration} {t.hours}</span>
+              <span className="text-gray-600 dark:text-gray-400">{paymentT.duration}</span>
+              <span>{bookingData.duration} {paymentT.hours}</span>
             </div>
             <div className="border-t pt-3 mt-3">
               <div className="flex justify-between mb-2">
-                <span className="text-gray-600 dark:text-gray-400">{t.totalAmount}</span>
-                <span>{bookingData.amount} {t.egp}</span>
+                <span className="text-gray-600 dark:text-gray-400">{paymentT.totalAmount}</span>
+                <span>{bookingData.amount} {paymentT.egp}</span>
               </div>
               <div className="flex justify-between mb-2">
-                <span className="text-gray-600 dark:text-gray-400">{t.platformFee}</span>
-                <span>{platformFee.toFixed(2)} {t.egp}</span>
+                <span className="text-gray-600 dark:text-gray-400">{paymentT.platformFee}</span>
+                <span>{platformFee.toFixed(2)} {paymentT.egp}</span>
               </div>
               <div className="flex justify-between text-lg border-t pt-2 mt-2">
-                <span>{t.finalAmount}</span>
-                <span className="text-[#FB5E7A]">{finalAmount.toFixed(2)} {t.egp}</span>
+                <span>{paymentT.finalAmount}</span>
+                <span className="text-[#FB5E7A]">{finalAmount.toFixed(2)} {paymentT.egp}</span>
               </div>
             </div>
           </div>
@@ -249,12 +170,12 @@ export default function PaymentPage({ language, bookingData, onBack, onPaymentSu
         {/* Secure Payment Badge */}
         <div className="flex items-center justify-center gap-2 text-sm text-gray-600 dark:text-gray-400">
           <Lock className="size-4" />
-          <span>{t.securePayment}</span>
+          <span>{paymentT.securePayment}</span>
         </div>
 
         {/* Payment Method Selection */}
         <Card className="p-6">
-          <h2 className="text-lg mb-4">{t.selectPaymentMethod}</h2>
+          <h2 className="text-lg mb-4">{paymentT.selectPaymentMethod}</h2>
           <RadioGroup value={paymentMethod} onValueChange={(value: any) => setPaymentMethod(value)}>
             <div className="space-y-3">
               {/* Credit Card */}
@@ -262,7 +183,7 @@ export default function PaymentPage({ language, bookingData, onBack, onPaymentSu
                 <RadioGroupItem value="card" id="payment-card" />
                 <Label htmlFor="payment-card" className="flex-1 cursor-pointer flex items-center gap-3">
                   <CreditCard className="size-5 text-blue-500" />
-                  <span>{t.creditCard}</span>
+                  <span>{paymentT.creditCard}</span>
                 </Label>
               </div>
 
@@ -271,7 +192,7 @@ export default function PaymentPage({ language, bookingData, onBack, onPaymentSu
                 <RadioGroupItem value="instapay" id="payment-instapay" />
                 <Label htmlFor="payment-instapay" className="flex-1 cursor-pointer flex items-center gap-3">
                   <Smartphone className="size-5 text-purple-500" />
-                  <span>{t.instaPay}</span>
+                  <span>{paymentT.instaPay}</span>
                 </Label>
               </div>
 
@@ -280,7 +201,7 @@ export default function PaymentPage({ language, bookingData, onBack, onPaymentSu
                 <RadioGroupItem value="vodafone" id="payment-vodafone" />
                 <Label htmlFor="payment-vodafone" className="flex-1 cursor-pointer flex items-center gap-3">
                   <Smartphone className="size-5 text-red-500" />
-                  <span>{t.vodafoneCash}</span>
+                  <span>{paymentT.vodafoneCash}</span>
                 </Label>
               </div>
 
@@ -289,7 +210,7 @@ export default function PaymentPage({ language, bookingData, onBack, onPaymentSu
                 <RadioGroupItem value="fawry" id="payment-fawry" />
                 <Label htmlFor="payment-fawry" className="flex-1 cursor-pointer flex items-center gap-3">
                   <DollarSign className="size-5 text-orange-500" />
-                  <span>{t.fawry}</span>
+                  <span>{paymentT.fawry}</span>
                 </Label>
               </div>
             </div>
@@ -302,7 +223,7 @@ export default function PaymentPage({ language, bookingData, onBack, onPaymentSu
             {paymentMethod === 'card' && !showVerification && (
               <div className="space-y-4">
                 <div>
-                  <Label>{t.cardNumber}</Label>
+                  <Label>{paymentT.cardNumber}</Label>
                   <Input
                     type="text"
                     placeholder="1234 5678 9012 3456"
@@ -313,7 +234,7 @@ export default function PaymentPage({ language, bookingData, onBack, onPaymentSu
                   />
                 </div>
                 <div>
-                  <Label>{t.cardName}</Label>
+                  <Label>{paymentT.cardName}</Label>
                   <Input
                     type="text"
                     placeholder="John Doe"
@@ -324,7 +245,7 @@ export default function PaymentPage({ language, bookingData, onBack, onPaymentSu
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label>{t.expiryDate}</Label>
+                    <Label>{paymentT.expiryDate}</Label>
                     <Input
                       type="text"
                       placeholder="MM/YY"
@@ -335,7 +256,7 @@ export default function PaymentPage({ language, bookingData, onBack, onPaymentSu
                     />
                   </div>
                   <div>
-                    <Label>{t.cvv}</Label>
+                    <Label>{paymentT.cvv}</Label>
                     <Input
                       type="text"
                       placeholder="123"
@@ -354,11 +275,11 @@ export default function PaymentPage({ language, bookingData, onBack, onPaymentSu
                 <Alert>
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription>
-                    {paymentMethod === 'instapay' ? t.instaPayInstructions : t.vodafoneCashInstructions}
+                    {paymentMethod === 'instapay' ? paymentT.instaPayInstructions : paymentT.vodafoneCashInstructions}
                   </AlertDescription>
                 </Alert>
                 <div>
-                  <Label>{t.phoneNumber}</Label>
+                  <Label>{paymentT.phoneNumber}</Label>
                   <Input
                     type="tel"
                     placeholder="01xxxxxxxxx"
@@ -373,7 +294,7 @@ export default function PaymentPage({ language, bookingData, onBack, onPaymentSu
                   variant="outline"
                   className="w-full"
                 >
-                  {t.verifyPhone}
+                  {paymentT.verifyPhone}
                 </Button>
               </div>
             )}
@@ -383,11 +304,11 @@ export default function PaymentPage({ language, bookingData, onBack, onPaymentSu
                 <Alert className="bg-green-50 dark:bg-green-900/20 border-green-500">
                   <Check className="h-4 w-4 text-green-600" />
                   <AlertDescription className="text-green-800 dark:text-green-200">
-                    {language === 'ar' ? 'تم إرسال كود التحقق إلى ' : 'Verification code sent to '}{phoneNumber}
+                    {paymentT.verificationCodeSentMsg} {phoneNumber}
                   </AlertDescription>
                 </Alert>
                 <div>
-                  <Label>{t.verificationCode}</Label>
+                  <Label>{paymentT.verificationCode}</Label>
                   <Input
                     type="text"
                     placeholder="123456"
@@ -402,14 +323,14 @@ export default function PaymentPage({ language, bookingData, onBack, onPaymentSu
                   disabled={!verificationCode || isProcessing}
                   className="w-full bg-[#FB5E7A] hover:bg-[#e5536e]"
                 >
-                  {isProcessing ? t.processingPayment : t.confirm}
+                  {isProcessing ? paymentT.processingPayment : paymentT.confirm}
                 </Button>
                 <Button
                   onClick={sendVerificationCode}
                   variant="ghost"
                   className="w-full"
                 >
-                  {t.resendCode}
+                  {paymentT.resendCode}
                 </Button>
               </div>
             )}
@@ -418,7 +339,7 @@ export default function PaymentPage({ language, bookingData, onBack, onPaymentSu
               <Alert>
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>
-                  {t.fawryInstructions}
+                  {paymentT.fawryInstructions}
                 </AlertDescription>
               </Alert>
             )}
@@ -432,12 +353,12 @@ export default function PaymentPage({ language, bookingData, onBack, onPaymentSu
               <div className="w-16 h-16 rounded-full bg-orange-500/10 flex items-center justify-center mx-auto">
                 <DollarSign className="w-8 h-8 text-orange-500" />
               </div>
-              <h3 className="text-lg">{t.fawryCode}</h3>
+              <h3 className="text-lg">{paymentT.fawryCode}</h3>
               <div className="text-3xl font-mono tracking-wider bg-gray-100 dark:bg-gray-800 p-4 rounded-lg">
                 {fawryCode}
               </div>
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                {t.fawryInstructions}
+                {paymentT.fawryInstructions}
               </p>
             </div>
           </Card>
@@ -451,7 +372,7 @@ export default function PaymentPage({ language, bookingData, onBack, onPaymentSu
             className="w-full bg-[#FB5E7A] hover:bg-[#e5536e]"
             size="lg"
           >
-            {isProcessing ? t.processingPayment : `${t.payNow} - ${finalAmount.toFixed(2)} ${t.egp}`}
+            {isProcessing ? paymentT.processingPayment : `${paymentT.payNow} - ${finalAmount.toFixed(2)} ${paymentT.egp}`}
           </Button>
         )}
       </div>

@@ -1,11 +1,16 @@
-import { useState } from 'react';
-import { ArrowLeft, ArrowRight, Check, X, Clock, MapPin, Calendar, User, Phone, AlertCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ArrowLeft, ArrowRight, Check, X, Clock, MapPin, Calendar, User, Phone, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Alert, AlertDescription } from '../ui/alert';
 import { Avatar } from '../ui/avatar';
 import type { Language } from '../../App';
+import { bookingService, type Booking } from '../../services/booking';
+import { notificationService } from '../../services/notification';
+import { sitterService } from '../../services/sitter';
+import { useAuthStore } from '../../stores/useAuthStore';
+import { toast } from 'sonner';
 
 const translations = {
   ar: {
@@ -88,22 +93,7 @@ const translations = {
   }
 };
 
-interface BookingRequest {
-  id: string;
-  clientName: string;
-  clientImage: string;
-  clientPhone: string;
-  service: 'hourly' | 'weekly' | 'monthly';
-  date: string;
-  time: string;
-  duration: number;
-  location: string;
-  amount: number;
-  children: number;
-  notes: string;
-  status: 'pending' | 'accepted' | 'rejected' | 'paid';
-  createdAt: string;
-}
+// Removed mock BookingRequest interface
 
 interface BookingRequestsProps {
   language: Language;
@@ -112,78 +102,93 @@ interface BookingRequestsProps {
 }
 
 export default function BookingRequests({ language, isVerified, onBack }: BookingRequestsProps) {
-  const [requests, setRequests] = useState<BookingRequest[]>([
-    {
-      id: '1',
-      clientName: 'سارة أحمد',
-      clientImage: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sara',
-      clientPhone: '01012345678',
-      service: 'hourly',
-      date: '2024-12-01',
-      time: '09:00',
-      duration: 5,
-      location: '15 شارع النيل، المعادي، القاهرة',
-      amount: 250,
-      children: 2,
-      notes: 'طفلان، 3 و 5 سنوات. يفضلون اللعب بالألوان',
-      status: 'pending',
-      createdAt: '2024-11-25T10:30:00'
-    },
-    {
-      id: '2',
-      clientName: 'منى محمد',
-      clientImage: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Mona',
-      clientPhone: '01098765432',
-      service: 'weekly',
-      date: '2024-12-02',
-      time: '14:00',
-      duration: 20,
-      location: '42 شارع الجامعة، المهندسين، الجيزة',
-      amount: 1200,
-      children: 1,
-      notes: 'طفل واحد 4 سنوات، دوام من الاثنين للجمعة',
-      status: 'pending',
-      createdAt: '2024-11-25T11:00:00'
-    },
-    {
-      id: '3',
-      clientName: 'ليلى حسن',
-      clientImage: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Laila',
-      clientPhone: '01234567890',
-      service: 'hourly',
-      date: '2024-11-30',
-      time: '16:00',
-      duration: 3,
-      location: '7 شارع الحرية، مصر الجديدة، القاهرة',
-      amount: 150,
-      children: 1,
-      notes: 'طفل رضيع 6 شهور',
-      status: 'accepted',
-      createdAt: '2024-11-24T15:20:00'
-    }
-  ]);
+  const { user } = useAuthStore();
+  const [requests, setRequests] = useState<Booking[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [profile, setProfile] = useState<any>(null);
 
-  const [selectedRequest, setSelectedRequest] = useState<BookingRequest | null>(null);
+  useEffect(() => {
+    loadData();
+    loadProfile();
+  }, [user?.id]);
+
+  const loadProfile = async () => {
+    if (!user?.id) return;
+    try {
+      const data = await sitterService.getProfile(user.id);
+      setProfile(data);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const loadData = async () => {
+    if (!user?.id) return;
+    try {
+      setLoading(true);
+      const data = await bookingService.getSitterBookings(user.id);
+      setRequests(data);
+    } catch (error) {
+      console.error(error);
+      toast.error(language === 'ar' ? 'خطأ في تحميل البيانات' : 'Error loading data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const [selectedRequest, setSelectedRequest] = useState<Booking | null>(null);
   const [showConfirmDialog, setShowConfirmDialog] = useState<'accept' | 'decline' | null>(null);
 
   const t = translations[language];
 
-  const handleAccept = (requestId: string) => {
-    setRequests(prev => prev.map(req =>
-      req.id === requestId ? { ...req, status: 'accepted' as const } : req
-    ));
-    setShowConfirmDialog(null);
-    setSelectedRequest(null);
-    alert(t.requestAccepted + ' - ' + t.waitingPayment);
+  const handleAccept = async (request: Booking) => {
+    try {
+      await bookingService.updateStatus(request.id, 'waiting_payment');
+
+      // Notification
+      await notificationService.createNotification({
+        user_id: request.client_id,
+        type: 'booking_accepted',
+        title: language === 'ar' ? 'تم قبول طلبك' : 'Booking Accepted',
+        message: language === 'ar'
+          ? `تم قبول طلبك من أختك ${profile?.full_name || 'الخالة'}. يرجى إتمام عملية الدفع.`
+          : `Your booking has been accepted by ${profile?.full_name || 'the sitter'}. Please complete the payment.`,
+        data: { booking_id: request.id }
+      });
+
+      toast.success(language === 'ar' ? 'تم قبول الطلب وبانتظار الدفع' : 'Request Accepted');
+      setShowConfirmDialog(null);
+      setSelectedRequest(null);
+      loadData();
+    } catch (error) {
+      console.error(error);
+      toast.error(language === 'ar' ? 'حدث خطأ' : 'Error occurred');
+    }
   };
 
-  const handleDecline = (requestId: string) => {
-    setRequests(prev => prev.map(req =>
-      req.id === requestId ? { ...req, status: 'rejected' as const } : req
-    ));
-    setShowConfirmDialog(null);
-    setSelectedRequest(null);
-    alert(t.requestDeclined);
+  const handleDecline = async (request: Booking) => {
+    try {
+      await bookingService.updateStatus(request.id, 'cancelled');
+
+      // Notification
+      await notificationService.createNotification({
+        user_id: request.client_id,
+        type: 'booking_declined',
+        title: language === 'ar' ? 'تم رفض الطلب' : 'Booking Declined',
+        message: language === 'ar'
+          ? `نعتذر، تم اعتذار أختك ${profile?.full_name || 'الخالة'} عن قبول الطلب.`
+          : `Sorry, ${profile?.full_name || 'the sitter'} has declined your booking request.`,
+        data: { booking_id: request.id }
+      });
+
+      toast.success(language === 'ar' ? 'تم رفض الطلب' : 'Request Declined');
+      setShowConfirmDialog(null);
+      setSelectedRequest(null);
+      loadData();
+    } catch (error) {
+      console.error(error);
+      toast.error(language === 'ar' ? 'حدث خطأ' : 'Error occurred');
+    }
   };
 
   const getServiceName = (service: string) => {
@@ -261,11 +266,11 @@ export default function BookingRequests({ language, isVerified, onBack }: Bookin
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
                       <Avatar className="w-12 h-12">
-                        <img src={request.clientImage} alt={request.clientName} />
+                        <img src={request.client?.avatar_url || ''} alt={request.client?.full_name} />
                       </Avatar>
                       <div>
-                        <h3>{request.clientName}</h3>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">{getServiceName(request.service)}</p>
+                        <h3>{request.client?.full_name}</h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">{request.booking_type === 'home' ? t.atHome : t.outside}</p>
                       </div>
                     </div>
                     {getStatusBadge(request.status)}
@@ -282,10 +287,10 @@ export default function BookingRequests({ language, isVerified, onBack }: Bookin
                     </div>
                     <div className="flex items-center gap-2">
                       <User className="size-4 text-gray-400" />
-                      <span>{request.children} {t.children}</span>
+                      <span>{request.children_count || 1} {t.children}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-[#FB5E7A]">{request.amount} {t.egp}</span>
+                      <span className="text-[#FB5E7A]">{request.total_price} {t.egp}</span>
                     </div>
                   </div>
 
@@ -341,19 +346,19 @@ export default function BookingRequests({ language, isVerified, onBack }: Bookin
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
                       <Avatar className="w-10 h-10">
-                        <img src={request.clientImage} alt={request.clientName} />
+                        <img src={request.client?.avatar_url || ''} alt={request.client?.full_name} />
                       </Avatar>
                       <div>
-                        <h3 className="text-sm">{request.clientName}</h3>
-                        <p className="text-xs text-gray-600 dark:text-gray-400">{getServiceName(request.service)}</p>
+                        <h3 className="text-sm">{request.client?.full_name}</h3>
+                        <p className="text-xs text-gray-600 dark:text-gray-400">{request.booking_type === 'home' ? t.atHome : t.outside}</p>
                       </div>
                     </div>
                     {getStatusBadge(request.status)}
                   </div>
 
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-600 dark:text-gray-400">{request.date} - {request.time}</span>
-                    <span className="text-[#FB5E7A]">{request.amount} {t.egp}</span>
+                    <span className="text-gray-600 dark:text-gray-400">{request.date} - {request.start_time}</span>
+                    <span className="text-[#FB5E7A]">{request.total_price} {t.egp}</span>
                   </div>
                 </div>
               </Card>
@@ -361,8 +366,15 @@ export default function BookingRequests({ language, isVerified, onBack }: Bookin
           </div>
         )}
 
+        {/* Loading State */}
+        {loading && (
+          <div className="flex justify-center p-12">
+            <Loader2 className="w-8 h-8 text-[#FB5E7A] animate-spin" />
+          </div>
+        )}
+
         {/* No Requests */}
-        {requests.length === 0 && (
+        {!loading && requests.length === 0 && (
           <Card className="p-12 text-center">
             <AlertCircle className="size-12 mx-auto mb-4 text-gray-400" />
             <p className="text-gray-600 dark:text-gray-400">{t.noRequests}</p>
@@ -384,9 +396,9 @@ export default function BookingRequests({ language, isVerified, onBack }: Bookin
               <Button
                 onClick={() => {
                   if (showConfirmDialog === 'accept') {
-                    handleAccept(selectedRequest.id);
+                    handleAccept(selectedRequest);
                   } else {
-                    handleDecline(selectedRequest.id);
+                    handleDecline(selectedRequest);
                   }
                 }}
                 className={showConfirmDialog === 'accept' ? 'flex-1 bg-green-500 hover:bg-green-600' : 'flex-1 bg-red-500 hover:bg-red-600'}

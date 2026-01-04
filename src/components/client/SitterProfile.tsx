@@ -1,237 +1,368 @@
-import { useState } from 'react';
-import { ArrowLeft, ArrowRight, Star, MapPin, Clock, Calendar, Home as HomeIcon, Building2, Shield, Award, Heart, Info, Baby } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import {
+  Star, MapPin, Calendar, Clock, Shield, ArrowLeft, ArrowRight, Home as HomeIcon,
+  Building2, Plus, Minus, AlertCircle
+} from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '../ui/dialog';
+import { Alert, AlertDescription } from '../ui/alert';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle
+} from "../ui/dialog";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
+} from "../ui/select";
 import { Label } from '../ui/label';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
 import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
 import { Checkbox } from '../ui/checkbox';
 import { Calendar as CalendarComponent } from '../ui/calendar';
-import type { Language } from '../../App';
+import { useAuthStore } from '../../stores/useAuthStore';
+import { bookingService } from '../../services/booking';
+import { childrenService } from '../../services/children';
+import { sitterService } from '../../services/sitter';
+import { supabase } from '../../lib/supabase';
+import { toast } from 'sonner';
+import { useTranslation } from '../../hooks/useTranslation';
+
+import { Sitter, Service, SitterAvailability } from '../../types/core';
 
 interface SitterProfileProps {
-  language: Language;
-  sitter: any;
+  sitter: Sitter;
   onBack: () => void;
 }
 
-const translations = {
-  ar: {
-    back: 'رجوع',
-    bookNow: 'احجزي الآن',
-    about: 'نبذة',
-    reviews: 'التقييمات',
-    gallery: 'الصور',
-    services: 'الخدمات والأسعار',
-    experience: 'سنوات خبرة',
-    completedJobs: 'جلسة مكتملة',
-    languages: 'اللغات',
-    specialties: 'المهارات',
-    verified: 'موثقة',
-    firstAid: 'إسعافات أولية',
-    bookingDetails: 'تفاصيل الحجز',
-    serviceType: 'مكان الخدمة',
-    atHome: 'في المنزل',
-    outside: 'خارج المنزل',
-    selectDate: 'اختاري الأيام',
-    selectDateDesc: 'يمكنك اختيار يوم واحد أو عدة أيام',
-    selectedDays: 'الأيام المختارة',
-    selectTime: 'اختاري الوقت',
-    duration: 'المدة (ساعات)',
-    minimumHours: 'ساعات',
-    childrenCount: 'عدد الأطفال',
-    child: 'طفل',
-    address: 'العنوان',
-    selectAddress: 'اختاري العنوان',
-    savedAddresses: 'عناويني المحفوظة',
-    otherAddress: 'عنوان آخر',
-    newAddress: 'أدخلي العنوان الجديد',
-    saveToAddresses: 'إضافة إلى عناويني',
-    notes: 'ملاحظات إضافية',
-    estimatedCost: 'التكلفة المقدرة',
-    pricePerHour: 'سعر الساعة',
-    numberOfDays: 'عدد الأيام',
-    totalHours: 'إجمالي الساعات',
-    egp: 'جنيه',
-    confirmBooking: 'تأكيد الحجز',
-    cancel: 'إلغاء',
-    allReviews: 'جميع التقييمات',
-    helpful: 'مفيد',
-    noReviews: 'لا توجد تقييمات بعد',
-    availability: 'التوفر',
-    atHomeOnly: 'متاحة في المنزل فقط',
-    outsideOnly: 'متاحة خارج المنزل فقط',
-    both: 'متاحة في المنزل وخارج المنزل',
-    minimum: 'الحد الأدنى',
-    bookedDays: 'أيام محجوزة (غير متاحة)',
-    baseRate: 'سعر الساعة الأساسي',
-    extraChild: 'لكل طفل إضافي',
-    skills: 'المهارات والخدمات',
-  },
-  en: {
-    back: 'Back',
-    bookNow: 'Book Now',
-    about: 'About',
-    reviews: 'Reviews',
-    gallery: 'Gallery',
-    services: 'Rates & Services',
-    experience: 'years experience',
-    completedJobs: 'completed jobs',
-    languages: 'Languages',
-    specialties: 'Specialties',
-    verified: 'Verified',
-    firstAid: 'First Aid Certified',
-    bookingDetails: 'Booking Details',
-    serviceType: 'Service Location',
-    atHome: 'At Home',
-    outside: 'Outside',
-    selectDate: 'Select Days',
-    selectDateDesc: 'You can select one or multiple days',
-    selectedDays: 'Selected Days',
-    selectTime: 'Select Time',
-    duration: 'Duration (hours)',
-    minimumHours: 'hours',
-    childrenCount: 'Number of Children',
-    child: 'child',
-    address: 'Address',
-    selectAddress: 'Select Address',
-    savedAddresses: 'My Saved Addresses',
-    otherAddress: 'Other Address',
-    newAddress: 'Enter New Address',
-    saveToAddresses: 'Save to My Addresses',
-    notes: 'Additional Notes',
-    estimatedCost: 'Estimated Cost',
-    pricePerHour: 'Price per Hour',
-    numberOfDays: 'Number of Days',
-    totalHours: 'Total Hours',
-    egp: 'EGP',
-    confirmBooking: 'Confirm Booking',
-    cancel: 'Cancel',
-    allReviews: 'All Reviews',
-    helpful: 'Helpful',
-    noReviews: 'No reviews yet',
-    availability: 'Availability',
-    atHomeOnly: 'Available at home only',
-    outsideOnly: 'Available outside only',
-    both: 'Available at home and outside',
-    minimum: 'Minimum',
-    bookedDays: 'Booked Days (Unavailable)',
-    baseRate: 'Base Hourly Rate',
-    extraChild: 'Per Extra Child',
-    skills: 'Skills & Services',
-  }
-};
+export default function SitterProfile({ sitter, onBack }: SitterProfileProps) {
+  const { user } = useAuthStore();
+  const { t, language } = useTranslation();
+  const sitterT = t.client.sitterProfile;
 
-export default function SitterProfile({ language, sitter, onBack }: SitterProfileProps) {
   const [showBookingDialog, setShowBookingDialog] = useState(false);
   const [serviceType, setServiceType] = useState<'home' | 'outside'>('home');
   const [selectedDates, setSelectedDates] = useState<Date[] | undefined>(undefined);
   const [selectedTime, setSelectedTime] = useState('09:00');
   const [duration, setDuration] = useState(3);
   const [childrenCount, setChildrenCount] = useState(1);
-  const [selectedAddressId, setSelectedAddressId] = useState<string>('');
   const [newAddress, setNewAddress] = useState('');
-  const [saveNewAddress, setSaveNewAddress] = useState(false);
   const [notes, setNotes] = useState('');
-  const t = translations[language];
+  const [isBooking, setIsBooking] = useState(false);
 
-  // Fallback rates if not in sitter object
-  const hourlyRate = sitter.hourlyRate || 80;
-  const extraChildRate = 20; // Fixed extra charge for now
+  // New State for Intelligent Selection
+  const [childrenList, setChildrenList] = useState<any[]>([]);
+  const [selectedChildIds, setSelectedChildIds] = useState<string[]>([]);
+  const [selectedAddress, setSelectedAddress] = useState('');
+  const [isAddingNewChild, setIsAddingNewChild] = useState(false);
+  const [newChildDetails, setNewChildDetails] = useState({ name: '', age: '', notes: '' });
+  const [showAddressInput, setShowAddressInput] = useState(false);
+  const [saveNewAddress, setSaveNewAddress] = useState(false);
 
-  // Mock saved addresses for the client
-  const savedAddresses = [
-    { id: '1', label: language === 'ar' ? 'المنزل' : 'Home', address: language === 'ar' ? '15 شارع النيل، المعادي، القاهرة' : '15 Nile Street, Maadi, Cairo' },
-    { id: '2', label: language === 'ar' ? 'العمل' : 'Work', address: language === 'ar' ? '42 شارع الجامعة، المهندسين، الجيزة' : '42 University Street, Mohandessin, Giza' },
-    { id: '3', label: language === 'ar' ? 'عند الوالدة' : 'Mom\'s House', address: language === 'ar' ? '7 شارع الحرية، مصر الجديدة، القاهرة' : '7 Horreya Street, Heliopolis, Cairo' },
-  ];
 
-  // Mock booked dates for this sitter
-  const bookedDates = [
-    new Date(2024, 10, 25), // Nov 25, 2024
-    new Date(2024, 10, 26), // Nov 26, 2024
-    new Date(2024, 10, 30), // Nov 30, 2024
-    new Date(2024, 11, 5),  // Dec 5, 2024
-    new Date(2024, 11, 10), // Dec 10, 2024
-  ];
+  const [showServicesDialog, setShowServicesDialog] = useState(false);
+  const [selectedServicePlan, setSelectedServicePlan] = useState<Service | null>(null);
+  const [availability, setAvailability] = useState<SitterAvailability[]>([]);
+  const [availableTimeSlots, setAvailableTimeSlots] = useState<{ start: string; end: string }[]>([]);
 
-  const numberOfDays = selectedDates?.length || 0;
-  const totalHours = numberOfDays * duration;
-  // Price Calculation: (Base Rate * Hours) + (Extra Child Rate * (Children - 1) * Hours)
-  const baseTotal = hourlyRate * totalHours;
-  const extraChildTotal = (childrenCount - 1) * extraChildRate * totalHours;
-  const estimatedCost = baseTotal + (extraChildTotal > 0 ? extraChildTotal : 0);
-
-  const mockReviews = [
-    {
-      id: 1,
-      author: language === 'ar' ? 'أمل محمود' : 'Amal Mahmoud',
-      rating: 5,
-      date: '2024-11-15',
-      comment: language === 'ar' 
-        ? 'خالة ممتازة جداً، أطفالي أحبوها كثيراً. ملتزمة بالمواعيد ومحترفة في التعامل.'
-        : 'Excellent sitter, my children loved her very much. Punctual and professional.',
-      helpful: 12
-    },
-    {
-      id: 2,
-      author: language === 'ar' ? 'هدى سعيد' : 'Hoda Said',
-      rating: 5,
-      date: '2024-11-10',
-      comment: language === 'ar'
-        ? 'تجربة رائعة، اهتمت بطفلي بشكل ممتاز وأرسلت لي تقارير دورية.'
-        : 'Great experience, took excellent care of my child and sent me regular updates.',
-      helpful: 8
-    },
-    {
-      id: 3,
-      author: language === 'ar' ? 'ريهام عادل' : 'Reham Adel',
-      rating: 4,
-      date: '2024-11-05',
-      comment: language === 'ar'
-        ? 'جيدة جداً، لكن كنت أتمنى المزيد من الأنشطة الترفيهية للأطفال.'
-        : 'Very good, but I wished for more entertainment activities for the children.',
-      helpful: 5
+  useEffect(() => {
+    if (user?.id) {
+      loadClientData();
     }
-  ];
+  }, [user?.id]);
 
-  const handleBooking = () => {
-    alert(language === 'ar' 
-      ? 'تم إرسال طلب الحجز بنجاح! سيتم التواصل معك قريباً.'
-      : 'Booking request sent successfully! You will be contacted soon.');
-    setShowBookingDialog(false);
-    onBack();
+  useEffect(() => {
+    if (sitter?.id) {
+      loadSitterAvailability();
+    }
+  }, [sitter?.id]);
+
+  const loadSitterAvailability = async () => {
+    try {
+      const data = await sitterService.getAvailability(sitter.id);
+      setAvailability(data);
+    } catch (error) {
+      console.error('Error loading sitter availability:', error);
+    }
   };
 
+  const isDateAvailable = (date: Date) => {
+    if (!availability.length) return false;
+
+    // Normalize date to compare
+    const dayOfWeek = date.getDay();
+    const dateStr = date.toISOString().split('T')[0];
+
+    return availability.some(slot => {
+      if (slot.is_recurring) {
+        return slot.day_of_week === dayOfWeek;
+      } else {
+        return slot.date === dateStr;
+      }
+    });
+  };
+
+  const getTimeSlotsForDate = (date: Date) => {
+    const dayOfWeek = date.getDay();
+    const dateStr = date.toISOString().split('T')[0];
+
+    return availability
+      .filter(slot => {
+        if (slot.is_recurring) {
+          return slot.day_of_week === dayOfWeek;
+        } else {
+          return slot.date === dateStr;
+        }
+      })
+      .map(slot => ({
+        start: slot.start_time,
+        end: slot.end_time
+      }));
+  };
+
+  const formatTime12h = (time24: string) => {
+    if (!time24) return '';
+    const [hours, minutes] = time24.split(':').map(Number);
+    const period = hours >= 12
+      ? (language === 'ar' ? 'م' : 'PM')
+      : (language === 'ar' ? 'ص' : 'AM');
+    const hours12 = hours % 12 || 12;
+    return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
+  };
+
+  useEffect(() => {
+    if (selectedDates && selectedDates.length > 0) {
+      const slots = getTimeSlotsForDate(selectedDates[0]);
+      setAvailableTimeSlots(slots);
+      if (slots.length > 0) {
+        setSelectedTime(slots[0].start);
+      }
+    } else {
+      setAvailableTimeSlots([]);
+    }
+  }, [selectedDates, availability]);
+
+  const loadClientData = async () => {
+    try {
+      if (!user?.id) return;
+
+      // Load Children using service to ensure correct table 'children' is used
+      const childrenData = await childrenService.getChildren(user.id);
+
+      if (childrenData) {
+        setChildrenList(childrenData);
+        if (childrenData.length > 0) {
+          // Default to first child
+          setSelectedChildIds([childrenData[0].id]);
+          setChildrenCount(1);
+        }
+      }
+
+      // Load Address
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('default_address')
+        .eq('id', user.id)
+        .single();
+
+      if (profileData?.default_address) {
+        setSelectedAddress(profileData.default_address);
+      }
+
+    } catch (error) {
+      console.error('Error loading client data:', error);
+    }
+  };
+
+  // Derive hourly rate from selected plan or fallback
+  let hourlyRate = 0;
+  if (selectedServicePlan) {
+    hourlyRate = selectedServicePlan.pricePerHour || selectedServicePlan.price || 0;
+  } else if (sitter.services && sitter.services.length > 0) {
+    // Fallback for initial render or if logic is mixed
+    const relevantService = sitter.services.find((s) =>
+      (serviceType === 'home' && (s.name === 'weekly' || s.name === 'monthly' || s.name === 'home')) ||
+      (serviceType === 'outside' && s.name === 'outside')
+    );
+    if (relevantService) {
+      hourlyRate = relevantService.pricePerHour || relevantService.price || 0;
+    } else {
+      hourlyRate = sitter.services[0].pricePerHour || sitter.services[0].price || 0;
+    }
+  }
+
+  const extraChildRate = 20;
+  const numberOfDays = selectedDates?.length || 0;
+  const totalHours = numberOfDays * duration;
+
+  // Update pricing logic
+  const activeChildCount = selectedChildIds.length;
+  const estimatedCost = (hourlyRate * totalHours) + (Math.max(0, activeChildCount - 1) * extraChildRate * totalHours);
+
+  const handleServiceSelect = (service: any) => {
+    setSelectedServicePlan(service);
+    setShowServicesDialog(false);
+    setShowBookingDialog(true);
+    // Auto-set service type based on plan if possible, or keep as selection
+    if (service.name === 'outside' || service.service_type === 'outside') {
+      setServiceType('outside');
+    } else {
+      setServiceType('home');
+    }
+  };
+
+  const handleAddNewChild = async () => {
+    try {
+      if (!newChildDetails.name || !user?.id) return;
+
+      // Save new child using service
+      const savedChild = await childrenService.addChild({
+        client_id: user.id,
+        name: newChildDetails.name,
+        age: Number(newChildDetails.age) || 0,
+        gender: 'male',
+        notes: newChildDetails.notes
+      });
+
+      // Add to list and select it
+      setChildrenList([...childrenList, savedChild]);
+      setSelectedChildIds([...selectedChildIds, savedChild.id]);
+
+      // Reset form
+      setIsAddingNewChild(false);
+      setNewChildDetails({ name: '', age: '', notes: '' });
+      toast.success(sitterT.childAddedSuccess);
+
+    } catch (error) {
+      console.error('Error adding child:', error);
+      toast.error(sitterT.childAddedError);
+    }
+  };
+
+  const handleBooking = async () => {
+    if (!user) {
+      toast.error(sitterT.loginRequired);
+      return;
+    }
+
+    try {
+      // Check verification status
+      const { data: profileCheck, error: profileError } = await supabase
+        .from('profiles')
+        .select('is_verified')
+        .eq('id', user.id)
+        .single();
+
+      if (profileError) throw profileError;
+
+      if (!profileCheck?.is_verified) {
+        toast.error(sitterT.verificationRequiredMsg);
+        return;
+      }
+    } catch (error) {
+      console.error('Verification check error:', error);
+      toast.error(sitterT.verificationCheckError);
+      return;
+    }
+
+    if (!selectedDates || selectedDates.length === 0) {
+      toast.error(sitterT.selectDateError);
+      return;
+    }
+
+    if (isBooking) return;
+
+    try {
+      setIsBooking(true);
+
+      // 2. Handle Address
+      let bookingLocation = sitter.location || '';
+      if (serviceType === 'home') {
+        if (showAddressInput && newAddress) {
+          bookingLocation = newAddress;
+          // Save as default if requested
+          if (saveNewAddress) {
+            await supabase
+              .from('profiles')
+              .update({ default_address: newAddress })
+              .eq('id', user.id);
+          }
+        } else if (selectedAddress) {
+          bookingLocation = selectedAddress;
+        } else {
+          toast.error(sitterT.enterAddressError);
+          setIsBooking(false);
+          return;
+        }
+      }
+
+      // Process each selected date
+      for (const date of selectedDates) {
+        const slots = getTimeSlotsForDate(date);
+        const startTimeInMinutes = parseInt(selectedTime.split(':')[0]) * 60 + parseInt(selectedTime.split(':')[1]);
+        const endTimeInMinutes = startTimeInMinutes + duration * 60;
+
+        const isWithinRange = slots.some(slot => {
+          const slotStartMinutes = parseInt(slot.start.split(':')[0]) * 60 + parseInt(slot.start.split(':')[1]);
+          const slotEndMinutes = parseInt(slot.end.split(':')[0]) * 60 + parseInt(slot.end.split(':')[1]);
+          return startTimeInMinutes >= slotStartMinutes && endTimeInMinutes <= slotEndMinutes;
+        });
+
+        if (!isWithinRange) {
+          toast.error(
+            sitterT.outsideWorkingHours.replace('{date}', date.toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US'))
+          );
+          setIsBooking(false);
+          return;
+        }
+
+        const dateStr = date.toISOString().split('T')[0];
+
+        await bookingService.createBooking({
+          client_id: user.id,
+          sitter_id: sitter.id,
+          date: dateStr,
+          start_time: selectedTime,
+          duration_hours: duration,
+          location: bookingLocation,
+          booking_type: serviceType,
+          total_price: estimatedCost / (selectedDates.length || 1), // Price per booking
+          children_count: Math.max(1, activeChildCount)
+        } as any);
+      }
+
+      toast.success(sitterT.successConfig);
+      setShowBookingDialog(false);
+      setSelectedDates([]);
+      setIsAddingNewChild(false);
+      setNewChildDetails({ name: '', age: '', notes: '' });
+      setNewAddress('');
+      setShowAddressInput(false);
+
+    } catch (error: any) {
+      console.error('Booking error:', error);
+      toast.error(error.message || sitterT.error);
+    } finally {
+      setIsBooking(false);
+    }
+  };
   return (
     <div className="max-w-4xl mx-auto px-4 pb-8">
-      {/* Header */}
-      <Button
-        variant="ghost"
-        onClick={onBack}
-        className="mb-4 text-[#FB5E7A]"
-      >
-        {language === 'ar' ? <ArrowRight className="w-4 h-4 ml-2" /> : <ArrowLeft className="w-4 h-4 mr-2" />}
-        {t.back}
-      </Button>
+      {/* Sticky Header */}
+      <div className="sticky top-0 z-50 bg-white dark:bg-gray-950 pt-6 pb-4 -mx-4 px-4 mb-4 border-b border-gray-100 dark:border-gray-800">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={onBack} className="rounded-full text-[#FB5E7A]">
+            {language === 'ar' ? <ArrowRight className="w-6 h-6" /> : <ArrowLeft className="w-6 h-6" />}
+          </Button>
+          <h1 className="text-[#FB5E7A] text-2xl font-bold truncate">{sitter.name}</h1>
+        </div>
+      </div>
 
-      {/* Profile Header */}
       <Card className="p-6 mb-6">
         <div className="flex flex-col md:flex-row gap-6">
-          {/* Image */}
           <div className="flex-shrink-0">
-            <img
-              src={sitter.image}
-              alt={sitter.name}
-              className="w-32 h-32 rounded-full object-cover mx-auto md:mx-0"
-            />
+            <img src={sitter.image} alt={sitter.name} loading="lazy" className="w-32 h-32 rounded-full object-cover mx-auto md:mx-0" />
           </div>
-
-          {/* Info */}
           <div className="flex-1">
             <div className="flex items-start justify-between mb-2">
               <div>
@@ -241,191 +372,313 @@ export default function SitterProfile({ language, sitter, onBack }: SitterProfil
                   <span>{sitter.location}</span>
                 </div>
               </div>
-              {sitter.available && (
-                <Badge className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
-                  <Clock className="w-3 h-3 mr-1" />
-                  {language === 'ar' ? 'متاحة الآن' : 'Available Now'}
-                </Badge>
-              )}
+              <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+                <Shield className="w-3 h-3 mr-1" />
+                {sitterT.verified}
+              </Badge>
             </div>
-
-            <div className="flex items-center gap-2 mb-4">
+            <div className="flex items-center gap-4 mb-4">
               <div className="flex items-center gap-1">
                 <Star className="w-5 h-5 fill-yellow-400 text-yellow-400" />
                 <span>{sitter.rating}</span>
-                <span className="text-gray-500">({sitter.reviews} {t.reviews})</span>
+                <span className="text-sm text-gray-500">({sitter.reviews} {sitterT.reviews})</span>
               </div>
-              <Badge variant="outline" className="text-[#FB5E7A]">
-                <Shield className="w-3 h-3 mr-1" />
-                {t.verified}
-              </Badge>
-              <Badge variant="outline" className="text-blue-600">
-                <Award className="w-3 h-3 mr-1" />
-                {t.firstAid}
-              </Badge>
             </div>
-
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
               <div className="text-center p-3 bg-[#FFD1DA]/20 rounded-lg">
                 <div className="text-[#FB5E7A] font-bold">{sitter.experience}</div>
-                <div className="text-xs text-gray-600 dark:text-gray-400">{t.experience}</div>
+                <div className="text-xs text-gray-600">{sitterT.experience}</div>
               </div>
               <div className="text-center p-3 bg-[#FFD1DA]/20 rounded-lg">
                 <div className="text-[#FB5E7A] font-bold">{sitter.reviews}</div>
-                <div className="text-xs text-gray-600 dark:text-gray-400">{t.completedJobs}</div>
+                <div className="text-xs text-gray-600">{sitterT.completedJobs}</div>
               </div>
               <div className="text-center p-3 bg-[#FFD1DA]/20 rounded-lg">
-                 <div className="text-[#FB5E7A] font-bold">{hourlyRate} {t.egp}</div>
-                <div className="text-xs text-gray-600 dark:text-gray-400">{t.pricePerHour}</div>
+                <div className="text-[#FB5E7A] font-bold">{hourlyRate > 0 ? `${hourlyRate} ${sitterT.egp}` : '---'}</div>
+                <div className="text-xs text-gray-600">{sitterT.pricePerHour}</div>
               </div>
-              <div className="text-center p-3 bg-[#FFD1DA]/20 rounded-lg">
-                <div className="text-[#FB5E7A] text-sm font-medium flex items-center justify-center h-full">
-                  {sitter.availabilityType === 'home' && t.atHomeOnly}
-                  {sitter.availabilityType === 'outside' && t.outsideOnly}
-                  {sitter.availabilityType === 'both' && t.both}
-                </div>
+              <div className="text-center p-3 bg-[#FFD1DA]/20 rounded-lg flex items-center justify-center">
+                <span className="text-xs font-medium text-gray-700">
+                  {sitter.availabilityType === 'home' && sitterT.atHomeOnly}
+                  {sitter.availabilityType === 'outside' && sitterT.outsideOnly}
+                  {sitter.availabilityType === 'both' && sitterT.both}
+                </span>
               </div>
             </div>
 
-            <Dialog open={showBookingDialog} onOpenChange={setShowBookingDialog}>
-              <DialogTrigger asChild>
-                <Button className="w-full bg-[#FB5E7A] hover:bg-[#e5536e]">
-                  <Calendar className="w-4 h-4 mr-2" />
-                  {t.bookNow}
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+            {!(sitter.services && sitter.services.filter((s) => s.is_active !== false).length > 0) && (
+              <Alert className="mb-4 bg-gray-50 border-gray-200">
+                <AlertCircle className="h-4 w-4 text-gray-500" />
+                <AlertDescription className="text-gray-600 text-sm">
+                  {sitterT.currentlyUnavailable} - {language === 'ar' ? 'هذه الخالة لم تقم بتفعيل أي خدمات حجز حالياً.' : 'This sitter has not enabled any booking services yet.'}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {/* Main Book Trigger */}
+            <Button
+              onClick={() => setShowServicesDialog(true)}
+              disabled={!(sitter.services && sitter.services.filter((s) => s.is_active !== false).length > 0)}
+              className="w-full bg-[#FB5E7A] hover:bg-[#e5536e] h-12 text-lg font-bold disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+              <Calendar className="w-4 h-4 mr-2" />
+              {sitter.services && sitter.services.filter((s) => s.is_active !== false).length > 0
+                ? sitterT.bookNow
+                : sitterT.currentlyUnavailable}
+            </Button>
+
+            {/* Services Selection Dialog */}
+            <Dialog open={showServicesDialog} onOpenChange={setShowServicesDialog}>
+              <DialogContent className="max-w-md">
                 <DialogHeader>
-                  <DialogTitle>{t.bookingDetails}</DialogTitle>
-                  <DialogDescription>
-                    {language === 'ar'
-                      ? 'قومي بتحديد موعد وتفاصيل الحجز'
-                      : 'Select date and booking details'}
-                  </DialogDescription>
+                  <DialogTitle>{sitterT.selectServiceTitle}</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
-                  
-                  {/* Service Type */}
-                  <div className="space-y-2">
-                    <Label>{t.serviceType}</Label>
-                    <RadioGroup value={serviceType} onValueChange={(v) => setServiceType(v as 'home' | 'outside')}>
+                  {sitter.services && sitter.services.filter((s) => s.is_active !== false).map((service) => (
+                    <div key={service.id} className="p-4 border rounded-lg flex justify-between items-center hover:bg-gray-50">
+                      <div>
+                        <h3 className="font-bold text-[#FB5E7A]">
+                          {service.name === 'hourly' && sitterT.serviceHourly}
+                          {service.name === 'weekly' && sitterT.serviceWeekly}
+                          {service.name === 'monthly' && sitterT.serviceMonthly}
+                          {!['hourly', 'weekly', 'monthly'].includes(service.name) && service.name}
+                        </h3>
+                        <p className="text-sm text-gray-600 font-medium">
+                          {service.pricePerHour || service.price} {sitterT.egp} / {sitterT.perHourLabel}
+                        </p>
+                        {service.description && <p className="text-xs text-gray-500 mt-1">{service.description}</p>}
+                      </div>
+                      <Button
+                        size="sm"
+                        onClick={() => handleServiceSelect(service)}
+                        className="bg-[#FB5E7A] hover:bg-[#e5536e]"
+                      >
+                        {sitterT.bookNow}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </DialogContent>
+            </Dialog>
+
+
+            <Dialog open={showBookingDialog} onOpenChange={setShowBookingDialog}>
+              <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>{sitterT.bookingDetails}</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-3">
+                    <Label className="text-sm font-semibold">{sitterT.serviceType}</Label>
+                    <RadioGroup value={serviceType} onValueChange={(v: "home" | "outside") => setServiceType(v)} className="flex flex-col gap-2">
                       {(sitter.availabilityType === 'home' || sitter.availabilityType === 'both') && (
-                        <div className="flex items-center space-x-2 rtl:space-x-reverse">
+                        <div className="flex items-center space-x-2 rtl:space-x-reverse p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
                           <RadioGroupItem value="home" id="home" />
-                          <Label htmlFor="home" className="flex items-center cursor-pointer">
-                            <HomeIcon className="w-4 h-4 mr-2" />
-                            {t.atHome}
+                          <Label htmlFor="home" className="flex items-center flex-1 cursor-pointer">
+                            <HomeIcon className="w-4 h-4 mr-2 ml-2" />
+                            {sitterT.atHome}
                           </Label>
                         </div>
                       )}
                       {(sitter.availabilityType === 'outside' || sitter.availabilityType === 'both') && (
-                        <div className="flex items-center space-x-2 rtl:space-x-reverse">
+                        <div className="flex items-center space-x-2 rtl:space-x-reverse p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
                           <RadioGroupItem value="outside" id="outside" />
-                          <Label htmlFor="outside" className="flex items-center cursor-pointer">
-                            <Building2 className="w-4 h-4 mr-2" />
-                            {t.outside}
+                          <Label htmlFor="outside" className="flex items-center flex-1 cursor-pointer">
+                            <Building2 className="w-4 h-4 mr-2 ml-2" />
+                            {sitterT.outside}
                           </Label>
                         </div>
                       )}
                     </RadioGroup>
                   </div>
 
-                  {/* Date */}
-                  <div className="space-y-2">
-                    <Label>{t.selectDate}</Label>
-                    <p className="text-sm text-gray-500">{t.selectDateDesc}</p>
+                  <div className="space-y-3">
+                    <Label className="text-sm font-semibold">{sitterT.selectDate}</Label>
+                    <div className="flex flex-wrap gap-2 text-xs text-gray-500 mb-2">
+                      <div className="flex items-center gap-1">
+                        <div className="w-3 h-3 rounded-full bg-[#FB5E7A]/20" />
+                        <span>{sitterT.available}</span>
+                      </div>
+                    </div>
                     <CalendarComponent
                       mode="multiple"
                       selected={selectedDates}
                       onSelect={setSelectedDates}
-                      disabled={(date) => date < new Date() || bookedDates.some(bookedDate => bookedDate.toDateString() === date.toDateString())}
-                      className="rounded-md border"
+                      disabled={(date: Date) => date < new Date() || !isDateAvailable(date)}
+                      modifiers={{
+                        available: (date: Date) => isDateAvailable(date)
+                      }}
+                      modifiersStyles={{
+                        available: { backgroundColor: '#FB5E7A20', color: '#FB5E7A', fontWeight: 'bold' }
+                      }}
+                      className="rounded-md border p-3"
                     />
-                    <p className="text-sm text-gray-500">{t.selectedDays}: {selectedDates ? selectedDates.map(date => date.toLocaleDateString()).join(', ') : ''}</p>
                   </div>
 
-                  {/* Time & Duration */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                        <Label htmlFor="time">{t.selectTime}</Label>
-                        <Input
-                          id="time"
-                          type="time"
-                          value={selectedTime}
-                          onChange={(e) => setSelectedTime(e.target.value)}
-                        />
-                    </div>
-                    <div className="space-y-2">
-                        <Label htmlFor="duration">{t.duration}</Label>
-                        <Input
-                          id="duration"
-                          type="number"
-                          min="2"
-                          max="12"
-                          value={duration}
-                          onChange={(e) => {
-                            const val = parseInt(e.target.value) || 2;
-                            setDuration(Math.max(2, val));
-                          }}
-                        />
-                    </div>
-                  </div>
+                  <div className="space-y-4">
+                    <Label className="text-sm font-semibold">{sitterT.selectTime}</Label>
+                    {availableTimeSlots.length > 0 ? (
+                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                        {availableTimeSlots.flatMap((slot, slotIdx) => {
+                          const startHour = parseInt(slot.start.split(':')[0]);
+                          const endHour = parseInt(slot.end.split(':')[0]);
+                          const hours = [];
+                          for (let h = startHour; h < endHour; h++) {
+                            hours.push(`${h.toString().padStart(2, '0')}:00`);
+                          }
+                          return hours.map((time) => (
+                            <button
+                              key={`${slotIdx}-${time}`}
+                              type="button"
+                              onClick={() => setSelectedTime(time)}
+                              className={`
+                                  py-2 px-1 text-sm rounded-lg border transition-all duration-200
+                                  ${selectedTime === time
+                                  ? 'bg-[#FB5E7A] text-white border-[#FB5E7A] shadow-md transform scale-105'
+                                  : 'bg-white text-gray-700 border-gray-200 hover:border-[#FB5E7A] hover:bg-[#FB5E7A]/5'}
+                                `}
+                            >
+                              {formatTime12h(time)}
+                            </button>
+                          ));
+                        })}
+                      </div>
+                    ) : (
+                      <div className="p-4 border border-dashed rounded-lg text-center text-sm text-gray-500 bg-gray-50">
+                        {selectedDates && selectedDates.length > 0
+                          ? sitterT.noSlotsAvailable
+                          : sitterT.selectDateFirst}
+                      </div>
+                    )}
 
-                  {/* Children Count */}
-                   <div className="space-y-2">
-                        <Label htmlFor="children">{t.childrenCount}</Label>
-                        <Input
-                          id="children"
-                          type="number"
-                          min="1"
-                          max="5"
-                          value={childrenCount}
-                          onChange={(e) => {
-                            const val = parseInt(e.target.value) || 1;
-                            setChildrenCount(Math.max(1, val));
-                          }}
-                        />
-                    </div>
-
-                  {/* Address */}
-                  {serviceType === 'home' && (
-                    <div className="space-y-3">
-                      <Label>{t.selectAddress}</Label>
-                      <RadioGroup value={selectedAddressId} onValueChange={setSelectedAddressId}>
-                        {savedAddresses.map((addr) => (
-                          <div key={addr.id} className="flex items-start space-x-2 rtl:space-x-reverse p-3 border rounded-lg">
-                            <RadioGroupItem value={addr.id} id={`addr-${addr.id}`} className="mt-1" />
-                            <Label htmlFor={`addr-${addr.id}`} className="flex-1 cursor-pointer">
-                              <div className="font-medium">{addr.label}</div>
-                              <div className="text-sm text-gray-500">{addr.address}</div>
-                            </Label>
+                    {availableTimeSlots.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {availableTimeSlots.map((slot, idx) => (
+                          <div key={idx} className="flex items-center gap-1.5 px-2 py-1 bg-[#FB5E7A]/5 border border-[#FB5E7A]/10 rounded-full">
+                            <Clock className="w-3 h-3 text-[#FB5E7A]" />
+                            <span className="text-[10px] font-medium text-[#FB5E7A]">
+                              {formatTime12h(slot.start)} - {formatTime12h(slot.end)}
+                            </span>
                           </div>
                         ))}
-                        
-                        <div className="flex items-start space-x-2 rtl:space-x-reverse p-3 border rounded-lg">
-                          <RadioGroupItem value="other" id="addr-other" className="mt-1" />
-                          <Label htmlFor="addr-other" className="flex-1 cursor-pointer">
-                            {t.otherAddress}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label className="text-sm font-semibold">{sitterT.durationLabel}</Label>
+                    <div className="flex items-center border rounded-lg h-11 px-1 bg-white">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setDuration(Math.max(2, duration - 1))}
+                        className="h-9 w-9 text-gray-500"
+                      >
+                        <Minus className="w-4 h-4" />
+                      </Button>
+                      <div className="flex-1 text-center font-medium">
+                        {duration} {sitterT.minimumHoursLabel}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setDuration(duration + 1)}
+                        className="h-9 w-9 text-gray-500"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label className="text-sm font-semibold">{sitterT.childrenCount}</Label>
+
+                    <div className="space-y-2">
+                      {childrenList.length > 0 && childrenList.map((child: any) => (
+                        <div key={child.id} className="flex items-center space-x-2 rtl:space-x-reverse p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                          <Checkbox
+                            id={child.id}
+                            checked={selectedChildIds.includes(child.id)}
+                            onCheckedChange={(checked: boolean) => {
+                              if (checked) setSelectedChildIds([...selectedChildIds, child.id]);
+                              else setSelectedChildIds(selectedChildIds.filter(id => id !== child.id));
+                            }}
+                          />
+                          <Label htmlFor={child.id} className="flex-1 cursor-pointer font-medium">
+                            {child.name} ({child.age} {sitterT.yearsLabel})
                           </Label>
                         </div>
-                      </RadioGroup>
+                      ))}
+                    </div>
 
-                      {selectedAddressId === 'other' && (
-                        <div className="space-y-2 pt-2">
+                    <div className="flex flex-col gap-2 mt-2">
+                      {!isAddingNewChild ? (
+                        <Button variant="outline" size="sm" onClick={() => setIsAddingNewChild(true)} className="w-full">
+                          <Plus className="w-4 h-4 mr-2" />
+                          {sitterT.addAnotherChild}
+                        </Button>
+                      ) : (
+                        <div className="p-3 bg-gray-50 border rounded-lg space-y-3">
+                          <Label className="text-sm font-medium">{sitterT.newChildTitle}</Label>
+                          <Input
+                            placeholder={sitterT.childNamePlaceholder}
+                            value={newChildDetails.name}
+                            onChange={(e) => setNewChildDetails({ ...newChildDetails, name: e.target.value })}
+                          />
+                          <Input
+                            type="number"
+                            placeholder={sitterT.childAgePlaceholder}
+                            value={newChildDetails.age}
+                            onChange={(e) => setNewChildDetails({ ...newChildDetails, age: e.target.value })}
+                          />
+                          <div className="flex gap-2 justify-end">
+                            <Button variant="ghost" size="sm" onClick={() => setIsAddingNewChild(false)}>
+                              {sitterT.cancel}
+                            </Button>
+                            <Button size="sm" onClick={handleAddNewChild} disabled={!newChildDetails.name}>
+                              {sitterT.confirm}
+                            </Button>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {sitterT.extraCostNotice}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {serviceType === 'home' && (
+                    <div className="space-y-3">
+                      <Label className="text-sm font-semibold">{sitterT.address}</Label>
+
+                      {selectedAddress && !showAddressInput && (
+                        <div className="p-3 border rounded-lg bg-gray-50 flex justify-between items-center">
+                          <div className="flex items-center gap-2 text-sm">
+                            <MapPin className="w-4 h-4 text-gray-500" />
+                            <span>{selectedAddress}</span>
+                          </div>
+                          <Button variant="link" size="sm" onClick={() => setShowAddressInput(true)}>
+                            {sitterT.change}
+                          </Button>
+                        </div>
+                      )}
+
+                      {(!selectedAddress || showAddressInput) && (
+                        <div className="space-y-3">
                           <Input
                             value={newAddress}
                             onChange={(e) => setNewAddress(e.target.value)}
-                            placeholder={t.newAddress}
-                            className="w-full"
+                            placeholder={sitterT.newAddress}
+                            className="h-11"
                           />
                           <div className="flex items-center space-x-2 rtl:space-x-reverse">
-                            <Checkbox 
-                              id="save-address" 
+                            <Checkbox
+                              id="save-address"
                               checked={saveNewAddress}
-                              onCheckedChange={(checked) => setSaveNewAddress(checked as boolean)}
+                              onCheckedChange={(c: boolean) => setSaveNewAddress(c)}
                             />
-                            <Label htmlFor="save-address" className="text-sm cursor-pointer">
-                              {t.saveToAddresses}
+                            <Label htmlFor="save-address" className="text-sm text-gray-600">
+                              {sitterT.saveAsDefault}
                             </Label>
                           </div>
                         </div>
@@ -433,53 +686,45 @@ export default function SitterProfile({ language, sitter, onBack }: SitterProfil
                     </div>
                   )}
 
-                  {/* Notes */}
-                  <div className="space-y-2">
-                    <Label htmlFor="notes">{t.notes}</Label>
+                  <div className="space-y-3">
+                    <Label className="text-sm font-semibold">{sitterT.notes}</Label>
                     <Textarea
-                      id="notes"
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
-                      placeholder={language === 'ar' ? 'أي ملاحظات خاصة؟' : 'Any special notes?'}
+                      placeholder={sitterT.notes}
                       rows={3}
+                      className="resize-none"
                     />
                   </div>
 
-                  {/* Cost Summary */}
-                  <div className="p-4 bg-[#FFD1DA]/20 rounded-lg space-y-2">
-                    <div className="flex justify-between items-center text-sm">
-                      <span>{t.pricePerHour}</span>
-                      <span>{hourlyRate} {t.egp}</span>
-                    </div>
-                    <div className="flex justify-between items-center text-sm">
-                        <span>{t.childrenCount}</span>
-                        <span>{childrenCount}</span>
-                    </div>
-                    <div className="flex justify-between items-center text-sm">
-                      <span>{t.totalHours}</span>
-                      <span>{totalHours} {t.minimumHours}</span>
-                    </div>
-                    <div className="flex justify-between items-center pt-2 border-t font-bold">
-                      <span>{t.estimatedCost}</span>
-                      <span className="text-[#FB5E7A]">{estimatedCost} {t.egp}</span>
-                    </div>
+                  <div className="p-4 bg-[#FFD1DA]/10 border border-[#FFD1DA] rounded-lg font-bold flex justify-between items-center mt-6">
+                    <span className="text-gray-700">{sitterT.estimatedCost}</span>
+                    <span className="text-[#FB5E7A] text-xl font-black">{estimatedCost} {sitterT.egp}</span>
                   </div>
 
-                  {/* Actions */}
-                  <div className="flex gap-2">
+                  {serviceType === 'home' && !selectedAddress && !newAddress && (
+                    <Alert className="mb-4 bg-red-50 border-red-200">
+                      <AlertCircle className="h-4 w-4 text-red-500" />
+                      <AlertDescription className="text-red-700 text-sm font-medium">
+                        {sitterT.addressRequiredNotice}
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
+                  <div className="flex gap-3 pt-6">
                     <Button
                       variant="outline"
                       onClick={() => setShowBookingDialog(false)}
-                      className="flex-1"
+                      className="flex-1 h-12"
                     >
-                      {t.cancel}
+                      {sitterT.cancel}
                     </Button>
                     <Button
                       onClick={handleBooking}
-                      className="flex-1 bg-[#FB5E7A] hover:bg-[#e5536e]"
-                      disabled={!selectedDates}
+                      disabled={isBooking || !selectedDates?.length || (serviceType === 'home' && !selectedAddress && !newAddress)}
+                      className="flex-[2] bg-[#FB5E7A] hover:bg-[#e5536e] h-12 font-bold"
                     >
-                      {t.confirmBooking}
+                      {isBooking ? (language === 'ar' ? 'جاري الإرسال...' : 'Sending...') : sitterT.confirmBooking}
                     </Button>
                   </div>
                 </div>
@@ -489,145 +734,72 @@ export default function SitterProfile({ language, sitter, onBack }: SitterProfil
         </div>
       </Card>
 
-      {/* Tabs */}
-      <Tabs defaultValue="about" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="about">{t.about}</TabsTrigger>
-          <TabsTrigger value="services">{t.services}</TabsTrigger>
-          <TabsTrigger value="reviews">{t.reviews}</TabsTrigger>
-          <TabsTrigger value="gallery">{t.gallery}</TabsTrigger>
+      <Tabs defaultValue="about">
+        <TabsList className="w-full grid grid-cols-3 mb-6">
+          <TabsTrigger value="about">{sitterT.about}</TabsTrigger>
+          <TabsTrigger value="services">{sitterT.services}</TabsTrigger>
+          <TabsTrigger value="reviews">{sitterT.reviewsTab}</TabsTrigger>
         </TabsList>
-
-        <TabsContent value="about">
-          <Card className="p-6 space-y-6">
-            <div>
-              <h3 className="mb-3">{language === 'ar' ? 'نبذة عني' : 'About Me'}</h3>
-              <p className="text-gray-600 dark:text-gray-400">
-                {language === 'ar'
-                  ? 'أنا خالة أطفال محترفة مع خبرة تزيد عن 5 سنوات في رعاية الأطفال من مختلف الأعمار. أحب العمل مع الأطفال وأسعى دائماً لتوفير بيئة آمنة ومجهزة لهم. حاصلة على دورات في الإسعافات الأولية والتغذية السليمة للأطفال.'
-                  : 'I am a professional babysitter with over 5 years of experience caring for children of all ages. I love working with children and always strive to provide a safe and stimulating environment for them. I have certifications in first aid and proper child nutrition.'}
-              </p>
-            </div>
-
-            <div>
-              <h3 className="mb-3">{t.languages}</h3>
+        <TabsContent value="about" className="space-y-6">
+          <Card className="p-6">
+            <h3 className="text-lg font-semibold mb-3">{sitterT.about}</h3>
+            <p className="text-gray-600 dark:text-gray-400">
+              {sitter.raw?.bio || (language === 'ar' ? 'لا يوجد نبذة تعريفية' : 'No bio available')}
+            </p>
+          </Card>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card className="p-6">
+              <h3 className="text-lg font-semibold mb-3">{sitterT.languages}</h3>
               <div className="flex flex-wrap gap-2">
-                {sitter.languages.map((lang: string, index: number) => (
-                  <Badge key={index} variant="outline">{lang}</Badge>
+                {sitter.languages.map((lang: string) => (
+                  <Badge key={lang} variant="secondary">{lang}</Badge>
                 ))}
               </div>
-            </div>
-
-            <div>
-              <h3 className="mb-3">{t.specialties}</h3>
+            </Card>
+            <Card className="p-6">
+              <h3 className="text-lg font-semibold mb-3">{sitterT.specialties}</h3>
               <div className="flex flex-wrap gap-2">
-                {sitter.specialties.map((specialty: string, index: number) => (
-                  <Badge key={index} className="bg-[#FFD1DA] text-[#FB5E7A]">
-                    {specialty}
-                  </Badge>
+                {sitter.specialties.map((spec: string) => (
+                  <Badge key={spec} variant="secondary">{spec}</Badge>
                 ))}
               </div>
+            </Card>
+          </div>
+        </TabsContent>
+        <TabsContent value="services">
+          <Card className="p-6">
+            <h3 className="text-lg font-semibold mb-4">{sitterT.skills}</h3>
+            <div className="space-y-4">
+              {sitter.services.map((service) => (
+                <div key={service.id} className="flex justify-between items-center p-3 border rounded-lg">
+                  <div>
+                    <div className="font-semibold text-gray-900 border-none">
+                      {service.name === 'hourly' && sitterT.serviceHourly}
+                      {service.name === 'weekly' && sitterT.serviceWeekly}
+                      {service.name === 'monthly' && sitterT.serviceMonthly}
+                      {!['hourly', 'weekly', 'monthly'].includes(service.name) && service.name}
+                    </div>
+                    {service.description && (
+                      <p className="text-sm text-gray-500">{service.description}</p>
+                    )}
+                  </div>
+                  <div className="text-[#FB5E7A] font-bold">
+                    {service.pricePerHour || service.price} {sitterT.egp} / {sitterT.perHourLabel}
+                  </div>
+                </div>
+              ))}
             </div>
           </Card>
         </TabsContent>
-
-        <TabsContent value="services">
-             <Card className="p-6 space-y-4">
-                <div className="flex items-center justify-between border-b pb-4">
-                    <div>
-                        <h3 className="text-lg font-semibold">{t.baseRate}</h3>
-                        <p className="text-gray-500 text-sm">{language === 'ar' ? 'السعر الاساسي للساعة' : 'Basic hourly rate'}</p>
-                    </div>
-                    <div className="text-2xl text-[#FB5E7A] font-bold">
-                        {hourlyRate} {t.egp} <span className="text-sm text-gray-400 font-normal">/ {t.minimumHours}</span>
-                    </div>
-                </div>
-                
-                 <div>
-                     <h3 className="text-lg font-semibold mb-3">{t.skills}</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {(sitter.services || []).map((service: any, idx: number) => (
-                            <div key={idx} className="p-3 bg-gray-50 rounded-lg flex items-center gap-2">
-                                <CheckIcon className="w-4 h-4 text-green-500" />
-                                <span>{service.name || service}</span>
-                            </div>
-                        ))}
-                        {/* Fallback if no services listed */}
-                         {(!sitter.services || sitter.services.length === 0) && (
-                            <p className="text-gray-500 text-sm">{language === 'ar' ? 'الرعاية الأساسية للأطفال' : 'Basic Child Care'}</p>
-                         )}
-                      </div>
-                 </div>
-             </Card>
-        </TabsContent>
-
         <TabsContent value="reviews">
-          <div className="space-y-4">
-            {mockReviews.map((review) => (
-              <Card key={review.id} className="p-4">
-                <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <h4 className="mb-1">{review.author}</h4>
-                    <div className="flex items-center gap-2">
-                      <div className="flex">
-                        {[...Array(5)].map((_, i) => (
-                          <Star
-                            key={i}
-                            className={`w-4 h-4 ${
-                              i < review.rating
-                                ? 'fill-yellow-400 text-yellow-400'
-                                : 'text-gray-300'
-                            }`}
-                          />
-                        ))}
-                      </div>
-                      <span className="text-sm text-gray-500">{review.date}</span>
-                    </div>
-                  </div>
-                </div>
-                <p className="text-gray-600 dark:text-gray-400 mb-3">{review.comment}</p>
-                <Button variant="ghost" size="sm" className="text-gray-500">
-                  <Heart className="w-4 h-4 mr-1" />
-                  {t.helpful} ({review.helpful})
-                </Button>
-              </Card>
-            ))}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="gallery">
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {[1, 2, 3, 4, 5, 6].map((i) => (
-              <div key={i} className="aspect-square rounded-lg bg-gray-200 dark:bg-gray-700 overflow-hidden">
-                <img
-                  src={`https://images.unsplash.com/photo-${1530982011887 + i}-433f2cfec26d?w=400`}
-                  alt={`Gallery ${i}`}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            ))}
-          </div>
+          <Card className="p-6">
+            <h3 className="text-lg font-semibold mb-4">{sitterT.reviewsTab}</h3>
+            <div className="flex items-center justify-center p-8 text-gray-500">
+              {sitterT.noReviews}
+            </div>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>
   );
-}
-
-function CheckIcon(props: any) {
-    return (
-        <svg
-        {...props}
-        xmlns="http://www.w3.org/2000/svg"
-        width="24"
-        height="24"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        >
-        <path d="M20 6 9 17l-5-5" />
-        </svg>
-    )
 }

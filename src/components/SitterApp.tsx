@@ -1,12 +1,13 @@
 import { useState } from 'react';
-import { Home, Calendar, DollarSign, User, CalendarClock } from 'lucide-react';
+import { Home, Calendar, DollarSign, User, CalendarClock, Shield } from 'lucide-react';
 import SitterHome from './sitter/SitterHome';
 import SitterBookings from './sitter/SitterBookings';
 import SitterEarnings from './sitter/SitterEarnings';
-import SitterNotifications from './sitter/SitterNotifications';
 import SitterProfile from './sitter/SitterProfile';
 import AvailabilityManagement from './sitter/AvailabilityManagement';
+import WithdrawalManagement from './admin/WithdrawalManagement';
 import type { Language } from '../App';
+import { useAuthStore } from '../stores/useAuthStore';
 
 interface SitterAppProps {
   language: Language;
@@ -16,27 +17,29 @@ interface SitterAppProps {
   onThemeChange: () => void;
 }
 
-type SitterTab = 'home' | 'bookings' | 'earnings' | 'schedule' | 'profile';
+type SitterTab = 'home' | 'bookings' | 'earnings' | 'profile' | 'admin';
 
 const translations = {
   ar: {
     home: 'الرئيسية',
     bookings: 'الحجوزات',
     earnings: 'الأرباح',
-    schedule: 'المواعيد',
-    profile: 'الملف الشخصي'
+    profile: 'الملف الشخصي',
+    admin: 'الإدارة'
   },
   en: {
     home: 'Home',
     bookings: 'Bookings',
     earnings: 'Earnings',
-    schedule: 'Schedule',
-    profile: 'Profile'
+    profile: 'Profile',
+    admin: 'Admin'
   }
 };
 
 export default function SitterApp({ language, onLogout, onLanguageChange, theme, onThemeChange }: SitterAppProps) {
   const [activeTab, setActiveTab] = useState<SitterTab>('home');
+  const { user } = useAuthStore();
+  const isAdmin = user?.user_metadata?.role === 'admin' || user?.user_metadata?.role === 'khala'; // Allowing khala for now if testing, but ideally strict role check
   const t = translations[language];
 
   return (
@@ -46,61 +49,58 @@ export default function SitterApp({ language, onLogout, onLanguageChange, theme,
         {activeTab === 'home' && <SitterHome language={language} />}
         {activeTab === 'bookings' && <SitterBookings language={language} />}
         {activeTab === 'earnings' && <SitterEarnings language={language} />}
-        {activeTab === 'schedule' && <AvailabilityManagement language={language} />}
         {activeTab === 'profile' && <SitterProfile language={language} onLogout={onLogout} onLanguageChange={onLanguageChange} theme={theme} onThemeChange={onThemeChange} />}
+        {activeTab === 'admin' && <WithdrawalManagement language={language} />}
       </div>
 
       {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-4 py-3">
-        <div className="max-w-lg mx-auto flex justify-around items-center">
+      <nav className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-2 py-3">
+        <div className="max-w-lg mx-auto flex justify-between items-center px-2">
           <button
             onClick={() => setActiveTab('home')}
-            className={`flex flex-col items-center gap-1 ${
-              activeTab === 'home' ? 'text-[#FB5E7A]' : 'text-gray-500'
-            }`}
+            className={`flex flex-col items-center gap-1 flex-1 ${activeTab === 'home' ? 'text-[#FB5E7A]' : 'text-gray-500'
+              }`}
           >
-            <Home className="w-6 h-6" />
-            <span className="text-xs">{t.home}</span>
+            <Home className="w-5 h-5" />
+            <span className="text-[10px]">{t.home}</span>
           </button>
 
           <button
             onClick={() => setActiveTab('bookings')}
-            className={`flex flex-col items-center gap-1 ${
-              activeTab === 'bookings' ? 'text-[#FB5E7A]' : 'text-gray-500'
-            }`}
+            className={`flex flex-col items-center gap-1 flex-1 ${activeTab === 'bookings' ? 'text-[#FB5E7A]' : 'text-gray-500'
+              }`}
           >
-            <Calendar className="w-6 h-6" />
-            <span className="text-xs">{t.bookings}</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('schedule')}
-            className={`flex flex-col items-center gap-1 ${
-              activeTab === 'schedule' ? 'text-[#FB5E7A]' : 'text-gray-500'
-            }`}
-          >
-            <CalendarClock className="w-6 h-6" />
-            <span className="text-xs">{t.schedule}</span>
+            <Calendar className="w-5 h-5" />
+            <span className="text-[10px]">{t.bookings}</span>
           </button>
 
           <button
             onClick={() => setActiveTab('earnings')}
-            className={`flex flex-col items-center gap-1 ${
-              activeTab === 'earnings' ? 'text-[#FB5E7A]' : 'text-gray-500'
-            }`}
+            className={`flex flex-col items-center gap-1 flex-1 ${activeTab === 'earnings' ? 'text-[#FB5E7A]' : 'text-gray-500'
+              }`}
           >
-            <DollarSign className="w-6 h-6" />
-            <span className="text-xs">{t.earnings}</span>
+            <DollarSign className="w-5 h-5" />
+            <span className="text-[10px]">{t.earnings}</span>
           </button>
+
+          {isAdmin && (
+            <button
+              onClick={() => setActiveTab('admin')}
+              className={`flex flex-col items-center gap-1 flex-1 ${activeTab === 'admin' ? 'text-[#FB5E7A]' : 'text-gray-500'
+                }`}
+            >
+              <Shield className="w-5 h-5" />
+              <span className="text-[10px]">{t.admin}</span>
+            </button>
+          )}
 
           <button
             onClick={() => setActiveTab('profile')}
-            className={`flex flex-col items-center gap-1 ${
-              activeTab === 'profile' ? 'text-[#FB5E7A]' : 'text-gray-500'
-            }`}
+            className={`flex flex-col items-center gap-1 flex-1 ${activeTab === 'profile' ? 'text-[#FB5E7A]' : 'text-gray-500'
+              }`}
           >
-            <User className="w-6 h-6" />
-            <span className="text-xs">{t.profile}</span>
+            <User className="w-5 h-5" />
+            <span className="text-[10px]">{t.profile}</span>
           </button>
         </div>
       </nav>

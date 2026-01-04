@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { User, Baby, MapPin, Phone, Mail, Edit, Plus, Trash2, LogOut, Languages, Moon, Sun, Shield, Check, AlertCircle, ChevronRight, ChevronLeft, Headphones } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { User, Baby, MapPin, Phone, Mail, Edit, Plus, Trash2, LogOut, Languages, Moon, Sun, Shield, Check, ChevronRight, ChevronLeft, Headphones, Briefcase } from 'lucide-react';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -7,6 +7,10 @@ import { Label } from '../ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Badge } from '../ui/badge';
 import ClientVerification from './ClientVerification';
+import { useAuthStore } from '../../stores/useAuthStore';
+import { childrenService } from '../../services/children';
+import { supabase } from '../../lib/supabase';
+import { toast } from 'sonner';
 import type { Language } from '../../App';
 
 interface ClientProfileProps {
@@ -18,10 +22,11 @@ interface ClientProfileProps {
 }
 
 interface Child {
-  id: number;
+  id: string;
   name: string;
   age: number;
-  notes: string;
+  gender?: 'male' | 'female';
+  notes?: string;
 }
 
 interface Address {
@@ -69,7 +74,13 @@ const translations = {
     lightMode: 'الوضع النهاري',
     darkMode: 'الوضع الليلي',
     verificationDesc: 'يرجى رفع صورة البطاقة الشخصية (الوجهين) لتفعيل الحساب بالكامل',
-    contactSupport: 'تواصل مع الدعم'
+    contactSupport: 'تواصل مع الدعم',
+    motherJob: 'وظيفة الأم',
+    fatherJob: 'وظيفة الأب',
+    defaultAddress: 'العنوان الافتراضي',
+    loading: 'جاري التحميل...',
+    error: 'حدث خطأ',
+    success: 'تم بنجاح'
   },
   en: {
     profile: 'Profile',
@@ -109,62 +120,200 @@ const translations = {
     lightMode: 'Light Mode',
     darkMode: 'Dark Mode',
     verificationDesc: 'Please upload your National ID (both sides) to fully activate your account',
-    contactSupport: 'Contact Support'
+    contactSupport: 'Contact Support',
+    motherJob: "Mother's Job",
+    fatherJob: "Father's Job",
+    defaultAddress: 'Default Address',
+    loading: 'Loading...',
+    error: 'An error occurred',
+    success: 'Success'
   }
 };
 
 export default function ClientProfile({ language, onLogout, onLanguageChange, theme, onThemeChange }: ClientProfileProps) {
+  const { user } = useAuthStore();
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [showAddChildDialog, setShowAddChildDialog] = useState(false);
   const [showAddAddressDialog, setShowAddAddressDialog] = useState(false);
   const [showVerification, setShowVerification] = useState(false);
-  
+
   const [profile, setProfile] = useState({
-    name: language === 'ar' ? 'أمل محمود' : 'Amal Mahmoud',
-    email: 'amal@example.com',
-    phone: '+20 100 123 4567',
-    memberSince: '2024-01',
-    isVerified: false, // Mock verification status
-    verificationStatus: 'not_verified' as 'not_verified' | 'pending' | 'verified'
+    name: '',
+    email: user?.email || '',
+    phone: '',
+    motherJob: '',
+    fatherJob: '',
+    defaultAddress: '',
+    memberSince: '',
+    isVerified: false,
+    verificationStatus: 'not_verified' as 'not_verified' | 'pending' | 'verified',
+    avatarUrl: ''
   });
 
-  const [children, setChildren] = useState<Child[]>([
-    {
-      id: 1,
-      name: language === 'ar' ? 'محمد' : 'Mohamed',
-      age: 5,
-      notes: language === 'ar' ? 'يحب الألعاب التعليمية' : 'Loves educational games'
-    },
-    {
-      id: 2,
-      name: language === 'ar' ? 'سارة' : 'Sara',
-      age: 3,
-      notes: language === 'ar' ? 'تحب القصص' : 'Loves stories'
-    }
-  ]);
+  const [children, setChildren] = useState<Child[]>([]);
+  const [addresses, setAddresses] = useState<Address[]>([]);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
-  const [addresses, setAddresses] = useState<Address[]>([
-    {
-      id: 1,
-      title: language === 'ar' ? 'المنزل' : 'Home',
-      address: language === 'ar' ? 'المنيا الجديدة، شارع الجامعة، مبنى 5' : 'New Minya, University Street, Building 5'
-    }
-  ]);
-
-  const [newChild, setNewChild] = useState({ name: '', age: 1, notes: '' });
+  const [newChild, setNewChild] = useState({ name: '', age: 1, gender: 'male' as 'male' | 'female', notes: '' });
   const [newAddress, setNewAddress] = useState({ title: '', address: '' });
   const t = translations[language];
 
-  const handleSaveProfile = () => {
-    setIsEditingProfile(false);
-    alert(language === 'ar' ? 'تم حفظ التغييرات' : 'Changes saved');
+  useEffect(() => {
+    if (user?.id) {
+      loadProfile();
+      loadChildren();
+    }
+  }, [user?.id]);
+
+  const loadProfile = async () => {
+    try {
+      if (!user?.id) return;
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (data) {
+        setProfile({
+          name: data.full_name || '',
+          email: user.email || '',
+          phone: data.phone || '',
+          motherJob: data.mother_job || '',
+          fatherJob: data.father_job || '',
+          defaultAddress: data.default_address || '',
+          memberSince: new Date(data.created_at).toLocaleDateString(),
+          isVerified: data.is_verified || false,
+          verificationStatus: data.is_verified ? 'verified' : 'not_verified',
+          avatarUrl: data.avatar_url || 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400'
+        });
+
+        // Set default address if exists
+        if (data.default_address) {
+          setAddresses([{
+            id: 1,
+            title: language === 'ar' ? 'العنوان الافتراضي' : 'Default Address',
+            address: data.default_address
+          }]);
+        }
+      } else {
+        // Profile deleted but user logged in? Sign out
+        await supabase.auth.signOut();
+        window.location.reload(); // Force reload to clear state
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error(t.error);
+    }
   };
 
-  const handleAddChild = () => {
-    if (newChild.name) {
-      setChildren([...children, { id: Date.now(), ...newChild }]);
-      setNewChild({ name: '', age: 1, notes: '' });
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user?.id) return;
+
+    // Validation
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error(language === 'ar' ? 'حجم الصورة يجب أن لا يتعدى 5 ميجابايت' : 'Image size must be less than 5MB');
+      return;
+    }
+
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      toast.error(language === 'ar' ? 'يجب أن تكون الصورة بصيغة JPG, PNG أو WebP' : 'Image must be JPG, PNG or WebP');
+      return;
+    }
+
+    try {
+      setIsUploadingAvatar(true);
+
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${user.id}-${Math.random()}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+
+      await supabase
+        .from('profiles')
+        .update({ avatar_url: publicUrl })
+        .eq('id', user.id);
+
+      setProfile(prev => ({ ...prev, avatarUrl: publicUrl }));
+      toast.success(t.success);
+    } catch (error) {
+      console.error(error);
+      toast.error(t.error);
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
+
+  // ... (children logic same as before) ...
+
+  const loadChildren = async () => {
+    try {
+      if (!user?.id) return;
+      const data = await childrenService.getChildren(user.id);
+      setChildren(data);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    try {
+      if (!user?.id) return;
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          full_name: profile.name,
+          phone: profile.phone,
+          mother_job: profile.motherJob,
+          father_job: profile.fatherJob,
+          default_address: profile.defaultAddress
+        })
+        .eq('id', user.id);
+
+      if (error) throw error;
+
+      toast.success(t.success);
+      setIsEditingProfile(false);
+      loadProfile();
+    } catch (error) {
+      console.error(error);
+      toast.error(t.error);
+    }
+  };
+
+  const handleAddChild = async () => {
+    try {
+      if (!newChild.name || !user?.id) return;
+
+      await childrenService.addChild({
+        client_id: user.id,
+        name: newChild.name,
+        age: newChild.age,
+        gender: newChild.gender,
+        notes: newChild.notes
+      });
+
+      toast.success(t.success);
+      setNewChild({ name: '', age: 1, gender: 'male', notes: '' });
       setShowAddChildDialog(false);
+      loadChildren();
+    } catch (error) {
+      console.error(error);
+      toast.error(t.error);
     }
   };
 
@@ -176,8 +325,15 @@ export default function ClientProfile({ language, onLogout, onLanguageChange, th
     }
   };
 
-  const handleDeleteChild = (id: number) => {
-    setChildren(children.filter(child => child.id !== id));
+  const handleDeleteChild = async (id: string) => {
+    try {
+      await childrenService.deleteChild(id);
+      toast.success(t.success);
+      loadChildren();
+    } catch (error) {
+      console.error(error);
+      toast.error(t.error);
+    }
   };
 
   const handleDeleteAddress = (id: number) => {
@@ -186,22 +342,50 @@ export default function ClientProfile({ language, onLogout, onLanguageChange, th
 
   if (showVerification) {
     return (
-      <ClientVerification 
-        language={language} 
-        onBack={() => setShowVerification(false)} 
+      <ClientVerification
+        language={language}
+        onBack={() => setShowVerification(false)}
       />
     );
   }
 
   return (
     <div className="max-w-4xl mx-auto px-4 pb-8">
-      <h1 className="text-[#FB5E7A] mb-6">{t.profile}</h1>
+      {/* Sticky Header */}
+      <div className="sticky top-0 z-50 bg-white dark:bg-gray-950 pt-6 pb-4 -mx-4 px-4 mb-4 border-b border-gray-100 dark:border-gray-800">
+        <h1 className="text-[#FB5E7A] text-2xl font-bold">{t.profile}</h1>
+      </div>
 
       {/* Profile Header */}
       <Card className="p-6 mb-6">
         <div className="flex items-center gap-4 mb-4">
-          <div className="w-20 h-20 rounded-full bg-[#FFD1DA] flex items-center justify-center relative">
-            <User className="w-10 h-10 text-[#FB5E7A]" />
+          <div className="relative group">
+            <div
+              className={`w-20 h-20 rounded-full bg-[#FFD1DA] flex items-center justify-center overflow-hidden border-2 border-transparent group-hover:border-[#FB5E7A] transition-all cursor-pointer ${isUploadingAvatar ? 'opacity-50' : ''}`}
+              onClick={() => document.getElementById('client-avatar-input')?.click()}
+            >
+              {profile.avatarUrl ? (
+                <img src={profile.avatarUrl} alt={profile.name} className="w-full h-full object-cover" />
+              ) : (
+                <User className="w-10 h-10 text-[#FB5E7A]" />
+              )}
+
+              <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity">
+                <Edit className="w-6 h-6 text-white" />
+              </div>
+
+              {isUploadingAvatar && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-6 h-6 border-2 border-[#FB5E7A] border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
+            </div>
+            <input id="client-avatar-input" type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} disabled={isUploadingAvatar} />
+
+            <p className="text-[10px] text-gray-500 text-center mt-2 w-24 mx-auto whitespace-normal leading-tight">
+              {language === 'ar' ? 'JPG, PNG - بحد أقصى 5 ميجا' : 'JPG, PNG - Max 5MB'}
+            </p>
+
             {profile.isVerified && (
               <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center border-2 border-white dark:border-gray-800">
                 <Check className="w-3 h-3 text-white" />
@@ -234,7 +418,7 @@ export default function ClientProfile({ language, onLogout, onLanguageChange, th
               {t.verification}
             </h3>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-              {profile.isVerified 
+              {profile.isVerified
                 ? (language === 'ar' ? 'حسابك موثق بالكامل' : 'Your account is fully verified')
                 : t.verificationDesc}
             </p>
@@ -245,7 +429,7 @@ export default function ClientProfile({ language, onLogout, onLanguageChange, th
                 {t.verified}
               </Badge>
             ) : profile.verificationStatus === 'pending' ? (
-               <Badge className="bg-yellow-100 text-yellow-700 text-sm py-1 px-3">
+              <Badge className="bg-yellow-100 text-yellow-700 text-sm py-1 px-3">
                 {t.pending}
               </Badge>
             ) : (
@@ -257,7 +441,7 @@ export default function ClientProfile({ language, onLogout, onLanguageChange, th
         </div>
 
         {!profile.isVerified && profile.verificationStatus !== 'pending' && (
-          <Button 
+          <Button
             onClick={() => setShowVerification(true)}
             className="w-full mt-2 bg-[#FB5E7A] hover:bg-[#e5536e]"
           >
@@ -291,8 +475,14 @@ export default function ClientProfile({ language, onLogout, onLanguageChange, th
               id="name"
               value={profile.name}
               onChange={(e) => setProfile({ ...profile, name: e.target.value })}
-              disabled={!isEditingProfile}
+              disabled={true}
+              className="bg-gray-50 dark:bg-gray-800 cursor-not-allowed"
             />
+            {isEditingProfile && (
+              <p className="text-[10px] text-gray-500 mt-1">
+                {language === 'ar' ? '* لا يمكن تغيير الاسم' : '* Name cannot be changed'}
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -304,9 +494,15 @@ export default function ClientProfile({ language, onLogout, onLanguageChange, th
                 type="email"
                 value={profile.email}
                 onChange={(e) => setProfile({ ...profile, email: e.target.value })}
-                disabled={!isEditingProfile}
+                disabled={true}
+                className="bg-gray-50 dark:bg-gray-800 cursor-not-allowed"
               />
             </div>
+            {isEditingProfile && (
+              <p className="text-[10px] text-gray-500 mt-1 ml-6">
+                {language === 'ar' ? '* لا يمكن تغيير البريد الإلكتروني' : '* Email cannot be changed'}
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -318,6 +514,45 @@ export default function ClientProfile({ language, onLogout, onLanguageChange, th
                 type="tel"
                 value={profile.phone}
                 onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
+                disabled={!isEditingProfile}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="motherJob">{t.motherJob}</Label>
+            <div className="flex items-center gap-2">
+              <Briefcase className="w-4 h-4 text-gray-400" />
+              <Input
+                id="motherJob"
+                value={profile.motherJob}
+                onChange={(e) => setProfile({ ...profile, motherJob: e.target.value })}
+                disabled={!isEditingProfile}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="fatherJob">{t.fatherJob}</Label>
+            <div className="flex items-center gap-2">
+              <Briefcase className="w-4 h-4 text-gray-400" />
+              <Input
+                id="fatherJob"
+                value={profile.fatherJob}
+                onChange={(e) => setProfile({ ...profile, fatherJob: e.target.value })}
+                disabled={!isEditingProfile}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="defaultAddress">{t.defaultAddress}</Label>
+            <div className="flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-gray-400" />
+              <Input
+                id="defaultAddress"
+                value={profile.defaultAddress}
+                onChange={(e) => setProfile({ ...profile, defaultAddress: e.target.value })}
                 disabled={!isEditingProfile}
               />
             </div>

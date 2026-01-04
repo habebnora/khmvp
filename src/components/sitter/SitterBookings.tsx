@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Calendar as CalendarIcon, Clock, MapPin, User, MessageCircle, FileText, Mic, StopCircle, Star, Play, Eye, QrCode, Activity } from 'lucide-react';
+import { Calendar as CalendarIcon, Clock, MapPin, FileText, Mic, StopCircle, Star, Eye, Activity, MessageCircle } from 'lucide-react';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -9,8 +9,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Textarea } from '../ui/textarea';
 import { Label } from '../ui/label';
 import RequestDetails, { BookingRequest } from './RequestDetails';
-import ChatPage from '../client/ChatPage';
+import SitterChatPage from './SitterChatPage';
 import SitterSessionPage from './SitterSessionPage';
+import { useAuthStore } from '../../stores/useAuthStore';
+import { bookingService } from '../../services/booking';
+import { sitterService } from '../../services/sitter';
+import { toast } from 'sonner';
 import type { Language } from '../../App';
 
 interface SitterBookingsProps {
@@ -18,7 +22,8 @@ interface SitterBookingsProps {
 }
 
 interface Booking {
-  id: number;
+  id: string;
+  client_id: string;
   clientName: string;
   clientImage: string;
   date: string;
@@ -26,7 +31,7 @@ interface Booking {
   duration: number;
   location: string;
   type: 'home' | 'outside';
-  status: 'pending' | 'waiting_payment' | 'upcoming' | 'ongoing' | 'completed'; 
+  status: 'pending' | 'waiting_payment' | 'upcoming' | 'ongoing' | 'completed' | 'cancelled';
   price: number;
   children: number;
   notes?: string;
@@ -74,6 +79,8 @@ const translations = {
     qrTitle: 'كود تأكيد الهوية',
     qrDesc: 'اطلبي من العميلة مسح هذا الكود عند الوصول لبدء الخدمة.',
     manageSession: 'إدارة الجلسة',
+    cancelled: 'ملغي',
+    error: 'حدث خطأ'
   },
   en: {
     myBookings: 'Booking Management',
@@ -116,133 +123,128 @@ const translations = {
     qrTitle: 'Identity Verification Code',
     qrDesc: 'Ask the client to scan this code upon arrival to start the service.',
     manageSession: 'Manage Session',
+    cancelled: 'Cancelled',
+    error: 'Error occurred'
   }
 };
 
-const mockBookings: Booking[] = [
-  {
-    id: 4,
-    clientName: 'منى حسن',
-    clientImage: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400',
-    date: '2024-11-28',
-    time: '16:00',
-    duration: 3,
-    location: 'المنيا الجديدة',
-    type: 'home',
-    status: 'pending',
-    price: 240,
-    children: 1,
-    notes: 'أول مرة نجرب الخدمة'
-  },
-  {
-    id: 5,
-    clientName: 'سارة أحمد',
-    clientImage: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400',
-    date: '2024-11-29',
-    time: '11:00',
-    duration: 4,
-    location: 'المنيا',
-    type: 'outside',
-    status: 'waiting_payment',
-    price: 320,
-    children: 2,
-    notes: 'يرجى الحضور قبل الموعد بـ 10 دقائق'
-  },
-  {
-    id: 1,
-    clientName: 'أمل محمود',
-    clientImage: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400',
-    date: '2024-11-25',
-    time: '10:00',
-    duration: 3,
-    location: 'المنيا الجديدة',
-    type: 'home',
-    status: 'upcoming',
-    price: 240,
-    children: 2,
-    notes: 'الأطفال يحبون القصص والألعاب التعليمية'
-  },
-  {
-    id: 2,
-    clientName: 'هدى سعيد',
-    clientImage: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400',
-    date: '2024-11-23',
-    time: '14:00',
-    duration: 2,
-    location: 'المنيا',
-    type: 'outside',
-    status: 'ongoing',
-    price: 200,
-    children: 1
-  },
-  {
-    id: 3,
-    clientName: 'ريهام عادل',
-    clientImage: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400',
-    date: '2024-11-20',
-    time: '09:00',
-    duration: 4,
-    location: 'المنيا الجديدة',
-    type: 'home',
-    status: 'completed',
-    price: 320,
-    children: 3
-  }
-];
-
 export default function SitterBookings({ language }: SitterBookingsProps) {
+  const { user } = useAuthStore();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [showReportDialog, setShowReportDialog] = useState(false);
-  const [showQRDialog, setShowQRDialog] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [showSessionPage, setShowSessionPage] = useState(false);
-  
-  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const [chatBooking, setChatBooking] = useState<Booking | null>(null);
   const [selectedBookingDetail, setSelectedBookingDetail] = useState<Booking | null>(null);
   const [sessionBooking, setSessionBooking] = useState<Booking | null>(null);
 
   const [report, setReport] = useState('');
   const [clientRating, setClientRating] = useState(0);
-  
+  const [activeSubTab, setActiveSubTab] = useState('ongoing');
+
   // Voice Recording State
   const [isRecording, setIsRecording] = useState(false);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  
+
   const t = translations[language];
+
+  useEffect(() => {
+    if (user?.id) {
+      loadBookings();
+    }
+  }, [user?.id]);
+
+  const loadBookings = async () => {
+    try {
+      setLoading(true);
+      if (!user?.id) return;
+
+      const data = await bookingService.getSitterBookings(user.id);
+
+      if (data) {
+        const formattedBookings: Booking[] = data.map((b: any) => ({
+          id: b.id,
+          client_id: b.client_id,
+          clientName: b.client?.full_name || 'Client',
+          clientImage: b.client?.avatar_url || 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400',
+          date: b.date,
+          time: b.start_time,
+          duration: b.duration_hours,
+          location: b.location,
+          type: b.booking_type,
+          status: b.status,
+          price: b.total_price,
+          children: 1, // Assumption for now as it's not in bookings table directly yet, likely need to parse notes or add column
+          notes: ''
+        }));
+        setBookings(formattedBookings);
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error(t.error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const getBookingsForDate = (date: Date) => {
     const dateStr = date.toISOString().split('T')[0];
-    return mockBookings.filter(booking => booking.date === dateStr);
+    return bookings.filter(booking => booking.date === dateStr);
   };
 
   const handleSendReport = () => {
+    // TODO: Implement actual report submission
     if ((report.trim() || audioBlob) && clientRating > 0) {
       alert(t.reportSent);
       setShowReportDialog(false);
       setReport('');
       setAudioBlob(null);
       setClientRating(0);
-      setSelectedBooking(null);
+      setSelectedBookingDetail(null);
     } else {
-        if (clientRating === 0) {
-            alert(language === 'ar' ? 'يرجى تقييم العميل' : 'Please rate the client');
-        }
+      if (clientRating === 0) {
+        alert(language === 'ar' ? 'يرجى تقييم العميل' : 'Please rate the client');
+      }
     }
   };
 
-  const handleAccept = (id: number) => {
-    alert(t.requestAccepted);
-    setSelectedBookingDetail(null);
+  const handleAccept = async (id: string) => {
+    try {
+      // Check verification status
+      const profile = await sitterService.getProfile(user!.id);
+      if (!profile.is_verified) {
+        toast.error(language === 'ar' ? 'يجب توثيق حسابك أولاً لقبول الطلبات' : 'You must verify your account first to accept requests');
+        return;
+      }
+
+      await bookingService.updateStatus(id, 'waiting_payment');
+      toast.success(t.requestAccepted);
+      setSelectedBookingDetail(null);
+      loadBookings();
+    } catch (error) {
+      toast.error(t.error);
+    }
   };
 
-  const handleDecline = (id: number) => {
-    alert(t.requestDeclined);
-    setSelectedBookingDetail(null);
+  const handleDecline = async (id: string) => {
+    try {
+      await bookingService.updateStatus(id, 'cancelled');
+      toast.success(t.requestDeclined);
+      setSelectedBookingDetail(null);
+      loadBookings();
+    } catch (error) {
+      toast.error(t.error);
+    }
   };
 
   const toggleRecording = () => {
+    // ... same recording logic ...
     if (isRecording) {
       setIsRecording(false);
       if (timerRef.current) clearInterval(timerRef.current);
@@ -287,14 +289,14 @@ export default function SitterBookings({ language }: SitterBookingsProps) {
             </div>
             <Badge className={
               booking.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
-              booking.status === 'waiting_payment' ? 'bg-orange-100 text-orange-700' :
-              booking.status === 'upcoming' ? 'bg-blue-100 text-blue-700' :
-              booking.status === 'ongoing' ? 'bg-green-100 text-green-700' :
-              'bg-gray-100 text-gray-700'
+                booking.status === 'waiting_payment' ? 'bg-orange-100 text-orange-700' :
+                  booking.status === 'upcoming' ? 'bg-blue-100 text-blue-700' :
+                    booking.status === 'ongoing' ? 'bg-green-100 text-green-700' :
+                      'bg-gray-100 text-gray-700'
             }>
-              {booking.status === 'pending' ? t.pending : 
-               booking.status === 'waiting_payment' ? t.waiting_payment :
-               t[booking.status]}
+              {booking.status === 'pending' ? t.pending :
+                booking.status === 'waiting_payment' ? t.waiting_payment :
+                  t[booking.status]}
             </Badge>
           </div>
 
@@ -327,24 +329,35 @@ export default function SitterBookings({ language }: SitterBookingsProps) {
           <div className="flex gap-2 mt-3">
             {/* Ongoing/Upcoming Special Actions */}
             {(booking.status === 'ongoing' || booking.status === 'upcoming') ? (
-                <Button 
-                    className={`w-full ${booking.status === 'ongoing' ? 'bg-green-600 hover:bg-green-700' : 'bg-[#FB5E7A] hover:bg-[#e5536e]'}`}
-                    onClick={() => {
-                        setSessionBooking(booking);
-                        setShowSessionPage(true);
-                    }}
+              <div className="flex gap-2 w-full">
+                <Button
+                  className={`flex-1 ${booking.status === 'ongoing' ? 'bg-green-600 hover:bg-green-700' : 'bg-[#FB5E7A] hover:bg-[#e5536e]'}`}
+                  onClick={() => {
+                    setSessionBooking(booking);
+                    setShowSessionPage(true);
+                  }}
                 >
-                    <Activity className="w-4 h-4 mr-2" />
-                    {t.manageSession}
+                  <Activity className="w-4 h-4 mr-2" />
+                  {t.manageSession}
                 </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setChatBooking(booking);
+                    setShowChat(true);
+                  }}
+                >
+                  <MessageCircle className="w-4 h-4" />
+                </Button>
+              </div>
             ) : (
-                <Button 
-                    className="w-full bg-[#FB5E7A] hover:bg-[#e5536e]"
-                    onClick={() => setSelectedBookingDetail(booking)}
-                >
-                    <Eye className="w-4 h-4 mr-2" />
-                    {t.viewDetails}
-                </Button>
+              <Button
+                className="w-full bg-[#FB5E7A] hover:bg-[#e5536e]"
+                onClick={() => setSelectedBookingDetail(booking)}
+              >
+                <Eye className="w-4 h-4 mr-2" />
+                {t.viewDetails}
+              </Button>
             )}
           </div>
         </div>
@@ -356,180 +369,183 @@ export default function SitterBookings({ language }: SitterBookingsProps) {
     if (!selectedBookingDetail) return null;
 
     if (selectedBookingDetail.status === 'waiting_payment') {
-        return (
-            <Button size="lg" variant="outline" className="w-full cursor-not-allowed opacity-70">
-                <Clock className="w-5 h-5 mr-2" />
-                {t.waiting_payment}
-            </Button>
-        );
+      return (
+        <Button size="lg" variant="outline" className="w-full cursor-not-allowed opacity-70">
+          <Clock className="w-5 h-5 mr-2" />
+          {t.waiting_payment}
+        </Button>
+      );
     }
 
     return (
-        <div className="flex flex-col gap-2 w-full">
-            <div className="flex gap-2">
-                {(selectedBookingDetail.status === 'upcoming' || selectedBookingDetail.status === 'ongoing') && (
-                   <>
-                    <Button 
-                        size="lg" 
-                        className="flex-1 bg-green-600 hover:bg-green-700"
-                        onClick={() => {
-                            setSessionBooking(selectedBookingDetail);
-                            setShowSessionPage(true);
-                        }}
-                    >
-                        <Activity className="w-5 h-5 mr-2" />
-                        {t.manageSession}
-                    </Button>
-                   </>
-                )}
-                {selectedBookingDetail.status === 'completed' && (
-                    <Button
-                        size="lg"
-                        onClick={() => {
-                            setSelectedBooking(selectedBookingDetail);
-                            setShowReportDialog(true);
-                        }}
-                        className="flex-1 bg-[#FB5E7A] hover:bg-[#e5536e]"
-                    >
-                        <FileText className="w-5 h-5 mr-2" />
-                        {t.sendReport}
-                    </Button>
-                )}
-            </div>
+      <div className="flex flex-col gap-2 w-full">
+        <div className="flex gap-2">
+          {(selectedBookingDetail.status === 'upcoming' || selectedBookingDetail.status === 'ongoing') && (
+            <>
+              <Button
+                size="lg"
+                className="flex-1 bg-green-600 hover:bg-green-700"
+                onClick={() => {
+                  setSessionBooking(selectedBookingDetail);
+                  setShowSessionPage(true);
+                }}
+              >
+                <Activity className="w-5 h-5 mr-2" />
+                {t.manageSession}
+              </Button>
+            </>
+          )}
+          {selectedBookingDetail.status === 'completed' && (
+            <Button
+              size="lg"
+              onClick={() => {
+                setShowReportDialog(true);
+              }}
+              className="flex-1 bg-[#FB5E7A] hover:bg-[#e5536e]"
+            >
+              <FileText className="w-5 h-5 mr-2" />
+              {t.sendReport}
+            </Button>
+          )}
         </div>
+      </div>
     );
   };
 
   // Render Conditional Pages
-  if (showChat && selectedBooking) {
-      return (
-          <ChatPage 
-            language={language}
-            onBack={() => setShowChat(false)}
-            recipientName={selectedBooking.clientName}
-            recipientImage={selectedBooking.clientImage}
-          />
-      );
+  if (showChat && chatBooking) {
+    return (
+      <SitterChatPage
+        language={language}
+        onBack={() => {
+          setShowChat(false);
+          setChatBooking(null);
+        }}
+        bookingId={chatBooking.id}
+        recipientId={chatBooking.client_id}
+        recipientName={chatBooking.clientName}
+        recipientImage={chatBooking.clientImage}
+      />
+    );
   }
 
   if (showSessionPage && sessionBooking) {
-      return (
-          <SitterSessionPage 
-            language={language}
-            booking={{
-                ...sessionBooking,
-                status: sessionBooking.status as 'upcoming' | 'ongoing'
-            }}
-            onBack={() => setShowSessionPage(false)}
-          />
-      );
+    return (
+      <SitterSessionPage
+        language={language}
+        booking={{
+          ...sessionBooking,
+          status: sessionBooking.status === 'upcoming' ? 'upcoming' : 'ongoing'
+        }}
+        onBack={() => setShowSessionPage(false)}
+        onChat={() => {
+          setChatBooking(sessionBooking);
+          setShowChat(true);
+        }}
+      />
+    );
   }
 
-  // Main Sitter Bookings View
   return (
     <div className="max-w-4xl mx-auto px-4 pb-8">
       {selectedBookingDetail ? (
-         <RequestDetails 
-            language={language}
-            request={selectedBookingDetail as unknown as BookingRequest}
-            onBack={() => setSelectedBookingDetail(null)}
-            onAccept={selectedBookingDetail.status === 'pending' ? () => handleAccept(selectedBookingDetail.id) : undefined}
-            onDecline={selectedBookingDetail.status === 'pending' ? () => handleDecline(selectedBookingDetail.id) : undefined}
-            customActions={selectedBookingDetail.status !== 'pending' ? renderDetailActions() : undefined}
-         />
+        <RequestDetails
+          language={language}
+          request={selectedBookingDetail as unknown as BookingRequest}
+          onBack={() => setSelectedBookingDetail(null)}
+          onAccept={selectedBookingDetail.status === 'pending' ? () => handleAccept(selectedBookingDetail.id) : undefined}
+          onDecline={selectedBookingDetail.status === 'pending' ? () => handleDecline(selectedBookingDetail.id) : undefined}
+          customActions={selectedBookingDetail.status !== 'pending' ? renderDetailActions() : undefined}
+        />
       ) : (
         <>
-            <h1 className="text-[#FB5E7A] mb-6">{t.myBookings}</h1>
-
+          {loading ? (
+            <div className="text-center py-12 text-gray-500">Loading...</div>
+          ) : (
             <Tabs defaultValue="list" className="space-y-4">
-                <TabsList className="grid w-full grid-cols-2">
-                    <TabsTrigger value="list">{t.list}</TabsTrigger>
-                    <TabsTrigger value="calendar">{t.calendar}</TabsTrigger>
+              {/* Consolidated Sticky Header */}
+              <div className="sticky top-0 z-50 bg-gray-50 dark:bg-gray-900 pt-6 pb-2 -mx-4 px-4 mb-2 border-b border-gray-100 dark:border-gray-800">
+                <h1 className="text-[#FB5E7A] text-2xl font-bold mb-4">{t.myBookings}</h1>
+
+                <TabsList className="grid w-full grid-cols-2 mb-4">
+                  <TabsTrigger value="list">{t.list}</TabsTrigger>
+                  <TabsTrigger value="calendar">{t.calendar}</TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="list">
-                    <Tabs defaultValue="ongoing" className="space-y-4">
-                        <TabsList className="grid w-full grid-cols-4 h-auto flex-wrap">
-                            <TabsTrigger value="ongoing">{t.ongoing}</TabsTrigger>
-                            <TabsTrigger value="requests">{t.requests}</TabsTrigger>
-                            <TabsTrigger value="confirmed">{t.confirmed}</TabsTrigger>
-                            <TabsTrigger value="completed">{t.completed}</TabsTrigger>
-                        </TabsList>
-
-                        <TabsContent value="ongoing" className="space-y-4">
-                            {mockBookings.filter(b => b.status === 'ongoing').length === 0 ? (
-                                <div className="text-center py-12 text-gray-500">
-                                    {t.noBookings}
-                                </div>
-                            ) : (
-                                mockBookings
-                                .filter(b => b.status === 'ongoing')
-                                .map(renderBookingCard)
-                            )}
-                        </TabsContent>
-
-                        <TabsContent value="requests" className="space-y-4">
-                            {mockBookings.filter(b => b.status === 'pending').length === 0 ? (
-                                <div className="text-center py-12 text-gray-500">
-                                    {t.noBookings}
-                                </div>
-                            ) : (
-                                mockBookings
-                                .filter(b => b.status === 'pending')
-                                .map(renderBookingCard)
-                            )}
-                        </TabsContent>
-
-                        <TabsContent value="confirmed" className="space-y-4">
-                            {mockBookings.filter(b => b.status === 'waiting_payment' || b.status === 'upcoming').length === 0 ? (
-                                <div className="text-center py-12 text-gray-500">
-                                    {t.noBookings}
-                                </div>
-                            ) : (
-                                mockBookings
-                                .filter(b => b.status === 'waiting_payment' || b.status === 'upcoming')
-                                .map(renderBookingCard)
-                            )}
-                        </TabsContent>
-
-                        <TabsContent value="completed" className="space-y-4">
-                            {mockBookings.filter(b => b.status === 'completed').length === 0 ? (
-                                <div className="text-center py-12 text-gray-500">
-                                    {t.noBookings}
-                                </div>
-                            ) : (
-                                mockBookings
-                                .filter(b => b.status === 'completed')
-                                .map(renderBookingCard)
-                            )}
-                        </TabsContent>
-                    </Tabs>
+                <TabsContent value="list" className="mt-0">
+                  <Tabs value={activeSubTab} onValueChange={setActiveSubTab} className="w-full">
+                    <TabsList className="grid w-full grid-cols-4 h-auto bg-gray-100 dark:bg-gray-800 border-none">
+                      <TabsTrigger value="ongoing" className="text-[10px] py-3 px-1 data-[state=active]:bg-[#FB5E7A] data-[state=active]:text-white">{t.ongoing}</TabsTrigger>
+                      <TabsTrigger value="requests" className="text-[10px] py-3 px-1 data-[state=active]:bg-[#FB5E7A] data-[state=active]:text-white">{t.requests}</TabsTrigger>
+                      <TabsTrigger value="confirmed" className="text-[10px] py-3 px-1 data-[state=active]:bg-[#FB5E7A] data-[state=active]:text-white">{t.confirmed}</TabsTrigger>
+                      <TabsTrigger value="completed" className="text-[10px] py-3 px-1 data-[state=active]:bg-[#FB5E7A] data-[state=active]:text-white">{t.completed}</TabsTrigger>
+                    </TabsList>
+                  </Tabs>
                 </TabsContent>
+              </div>
 
-                <TabsContent value="calendar">
-                    <Card className="p-6">
-                        <Calendar
-                        mode="single"
-                        selected={selectedDate}
-                        onSelect={(date) => date && setSelectedDate(date)}
-                        className="mx-auto"
-                        />
-                        
-                        <div className="mt-6 space-y-4">
-                        <h3>{selectedDate.toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US')}</h3>
-                        {getBookingsForDate(selectedDate).length === 0 ? (
-                            <p className="text-center py-8 text-gray-500">{t.noBookings}</p>
-                        ) : (
-                            getBookingsForDate(selectedDate).map(renderBookingCard)
-                        )}
-                        </div>
-                    </Card>
-                </TabsContent>
+              <TabsContent value="list" className="space-y-4 mt-0">
+                <Tabs value={activeSubTab} onValueChange={setActiveSubTab} className="space-y-4">
+                  {/* Removed duplicate sticky div here */}
+
+                  <TabsContent value="ongoing" className="space-y-4">
+                    {bookings.filter(b => b.status === 'ongoing').length === 0 ? (
+                      <div className="text-center py-12 text-gray-500">{t.noBookings}</div>
+                    ) : (
+                      bookings.filter(b => b.status === 'ongoing').map(renderBookingCard)
+                    )}
+                  </TabsContent>
+
+                  <TabsContent value="requests" className="space-y-4">
+                    {bookings.filter(b => b.status === 'pending').length === 0 ? (
+                      <div className="text-center py-12 text-gray-500">{t.noBookings}</div>
+                    ) : (
+                      bookings.filter(b => b.status === 'pending').map(renderBookingCard)
+                    )}
+                  </TabsContent>
+
+                  <TabsContent value="confirmed" className="space-y-4">
+                    {bookings.filter(b => b.status === 'waiting_payment' || b.status === 'upcoming').length === 0 ? (
+                      <div className="text-center py-12 text-gray-500">{t.noBookings}</div>
+                    ) : (
+                      bookings.filter(b => b.status === 'waiting_payment' || b.status === 'upcoming').map(renderBookingCard)
+                    )}
+                  </TabsContent>
+
+                  <TabsContent value="completed" className="space-y-4">
+                    {bookings.filter(b => b.status === 'completed').length === 0 ? (
+                      <div className="text-center py-12 text-gray-500">{t.noBookings}</div>
+                    ) : (
+                      bookings.filter(b => b.status === 'completed').map(renderBookingCard)
+                    )}
+                  </TabsContent>
+                </Tabs>
+              </TabsContent>
+
+              <TabsContent value="calendar">
+                <Card className="p-6">
+                  <Calendar
+                    mode="single"
+                    selected={selectedDate}
+                    onSelect={(date: Date | undefined) => date && setSelectedDate(date)}
+                    className="mx-auto"
+                  />
+
+                  <div className="mt-6 space-y-4">
+                    <h3 className="font-bold">{selectedDate.toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US')}</h3>
+                    {getBookingsForDate(selectedDate).length === 0 ? (
+                      <p className="text-center py-8 text-gray-500">{t.noBookings}</p>
+                    ) : (
+                      getBookingsForDate(selectedDate).map(renderBookingCard)
+                    )}
+                  </div>
+                </Card>
+              </TabsContent>
             </Tabs>
+          )}
         </>
       )}
 
-      {/* Report Dialog and QR Dialog (Optional if you want to keep it as a fallback) code preserved... */}
       {/* Report Dialog */}
       <Dialog open={showReportDialog} onOpenChange={setShowReportDialog}>
         <DialogContent>
@@ -540,7 +556,6 @@ export default function SitterBookings({ language }: SitterBookingsProps) {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-6 py-4">
-            {/* Client Rating */}
             <div className="space-y-2 text-center">
               <Label>{t.rateClient}</Label>
               <div className="flex justify-center gap-2">
@@ -551,11 +566,10 @@ export default function SitterBookings({ language }: SitterBookingsProps) {
                     className="focus:outline-none"
                   >
                     <Star
-                      className={`w-8 h-8 ${
-                        star <= clientRating
-                          ? 'fill-yellow-400 text-yellow-400'
-                          : 'text-gray-300'
-                      }`}
+                      className={`w-8 h-8 ${star <= clientRating
+                        ? 'fill-yellow-400 text-yellow-400'
+                        : 'text-gray-300'
+                        }`}
                     />
                   </button>
                 ))}
@@ -563,28 +577,27 @@ export default function SitterBookings({ language }: SitterBookingsProps) {
             </div>
 
             <div className="border-t pt-4 space-y-4">
-                <Textarea
+              <Textarea
                 value={report}
                 onChange={(e) => setReport(e.target.value)}
                 placeholder={t.writeReport}
                 rows={4}
-                />
-                <div className="text-center text-gray-500 text-sm">{t.or}</div>
-                <div className="flex flex-col items-center gap-3">
-                    <Button
-                        variant={isRecording ? "destructive" : "outline"}
-                        size="lg"
-                        onClick={toggleRecording}
-                        className={`rounded-full w-16 h-16 flex items-center justify-center ${isRecording ? 'animate-pulse' : ''}`}
-                    >
-                        {isRecording ? <StopCircle className="w-8 h-8" /> : <Mic className="w-8 h-8" />}
-                    </Button>
-                    <span className="text-sm font-mono">
-                        {isRecording ? formatDuration(recordingDuration) : (audioBlob ? t.voiceMessage : t.recordVoice)}
-                    </span>
-                </div>
+              />
+              <div className="text-center text-gray-500 text-sm">{t.or}</div>
+              <div className="flex flex-col items-center gap-3">
+                <Button
+                  variant={isRecording ? "destructive" : "outline"}
+                  size="lg"
+                  onClick={toggleRecording}
+                  className={`rounded-full w-16 h-16 flex items-center justify-center ${isRecording ? 'animate-pulse' : ''}`}
+                >
+                  {isRecording ? <StopCircle className="w-8 h-8" /> : <Mic className="w-8 h-8" />}
+                </Button>
+                <span className="text-sm font-mono">
+                  {isRecording ? formatDuration(recordingDuration) : (audioBlob ? t.voiceMessage : t.recordVoice)}
+                </span>
+              </div>
             </div>
-
             <div className="flex gap-2 pt-4">
               <Button
                 variant="outline"

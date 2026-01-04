@@ -1,149 +1,177 @@
-import { Bell, Calendar, Gift, MessageCircle, Check, DollarSign } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Bell, Calendar, MessageCircle, AlertCircle } from 'lucide-react';
 import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import type { Language } from '../../App';
+import { useAuthStore } from '../../stores/useAuthStore';
+import { notificationService, type Notification } from '../../services/notification';
+import { toast } from 'sonner';
+
+import { supabase } from '../../lib/supabase';
 
 interface SitterNotificationsProps {
   language: Language;
-}
-
-interface Notification {
-  id: number;
-  type: 'booking' | 'payment' | 'message' | 'offer' | 'rating';
-  title: string;
-  message: string;
-  time: string;
-  read: boolean;
-  icon: any;
 }
 
 const translations = {
   ar: {
     notifications: 'الإشعارات',
     markAllRead: 'تحديد الكل كمقروء',
-    noNotifications: 'لا توجد إشعارات'
+    noNotifications: 'لا توجد إشعارات',
+    now: 'الآن',
+    today: 'اليوم',
+    yesterday: 'أمس',
+    new: 'جديد',
+    error: 'حدث خطأ ما',
+    success: 'تمت العملية'
   },
   en: {
     notifications: 'Notifications',
     markAllRead: 'Mark all as read',
-    noNotifications: 'No notifications'
+    noNotifications: 'No notifications',
+    now: 'now',
+    today: 'today',
+    yesterday: 'yesterday',
+    new: 'New',
+    error: 'Something went wrong',
+    success: 'Operation successful'
   }
 };
 
 export default function SitterNotifications({ language }: SitterNotificationsProps) {
   const t = translations[language];
+  const { user } = useAuthStore();
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
-  const mockNotifications: Notification[] = [
-    {
-      id: 1,
-      type: 'booking',
-      title: language === 'ar' ? 'طلب حجز جديد' : 'New Booking Request',
-      message: language === 'ar'
-        ? 'أمل محمود أرسلت لك طلب حجز ليوم 26 نوفمبر'
-        : 'Amal Mahmoud sent you a booking request for November 26',
-      time: '5 دقائق',
-      read: false,
-      icon: Calendar
-    },
-    {
-      id: 2,
-      type: 'payment',
-      title: language === 'ar' ? 'تم استلام الدفعة' : 'Payment Received',
-      message: language === 'ar'
-        ? 'تم إضافة 240 جنيه إلى رصيدك'
-        : '240 EGP has been added to your balance',
-      time: '30 دقيقة',
-      read: false,
-      icon: DollarSign
-    },
-    {
-      id: 3,
-      type: 'message',
-      title: language === 'ar' ? 'رسالة جديدة' : 'New Message',
-      message: language === 'ar'
-        ? 'هدى سعيد أرسلت لك رسالة'
-        : 'Hoda Said sent you a message',
-      time: 'ساعة واحدة',
-      read: true,
-      icon: MessageCircle
-    },
-    {
-      id: 4,
-      type: 'rating',
-      title: language === 'ar' ? 'تقييم جديد' : 'New Rating',
-      message: language === 'ar'
-        ? 'ريهام عادل قيمتك بـ 5 نجوم!'
-        : 'Reham Adel rated you 5 stars!',
-      time: '3 ساعات',
-      read: true,
-      icon: Check
-    },
-    {
-      id: 5,
-      type: 'offer',
-      title: language === 'ar' ? 'نصيحة' : 'Tip',
-      message: language === 'ar'
-        ? 'كلما زادت استجابتك للطلبات، زاد ترتيبك في النتائج'
-        : 'The more responsive you are to requests, the higher your ranking in results',
-      time: 'أمس',
-      read: true,
-      icon: Gift
-    },
-    {
-      id: 6,
-      type: 'booking',
-      title: language === 'ar' ? 'تذكير بالموعد' : 'Appointment Reminder',
-      message: language === 'ar'
-        ? 'لديك موعد غداً الساعة 10:00 صباحاً'
-        : 'You have an appointment tomorrow at 10:00 AM',
-      time: 'منذ يومين',
-      read: true,
-      icon: Bell
+  useEffect(() => {
+    if (!user?.id) return;
+
+    loadNotifications();
+
+    // Subscribe to realtime notifications
+    const channel = supabase
+      .channel('public:notifications')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${user.id}`
+        },
+        (payload) => {
+          const newNotification = payload.new as Notification;
+          setNotifications(prev => [newNotification, ...prev]);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
+
+  const loadNotifications = async () => {
+    try {
+      if (!user?.id) return;
+      const data = await notificationService.getNotifications(user.id);
+      setNotifications(data);
+    } catch (error) {
+      console.error(error);
+      toast.error(t.error);
     }
-  ];
+  };
 
-  const getIconColor = (type: Notification['type']) => {
+  const handleMarkAllRead = async () => {
+    try {
+      if (!user?.id) return;
+      await notificationService.markAllAsRead(user.id);
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+      toast.success(t.success);
+    } catch (error) {
+      console.error(error);
+      toast.error(t.error);
+    }
+  };
+
+  const handleMarkAsRead = async (id: string, isRead: boolean) => {
+    if (isRead) return;
+    try {
+      await notificationService.markAsRead(id);
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const getIcon = (type: string) => {
     switch (type) {
-      case 'booking':
-        return 'text-blue-600';
-      case 'payment':
-        return 'text-green-600';
-      case 'message':
-        return 'text-[#FB5E7A]';
-      case 'offer':
-        return 'text-purple-600';
-      case 'rating':
-        return 'text-yellow-600';
-      default:
-        return 'text-gray-600';
+      case 'booking_update': return Calendar;
+      case 'new_message': return MessageCircle;
+      case 'system_alert': return AlertCircle;
+      default: return Bell;
     }
+  };
+
+  const getIconColor = (type: string) => {
+    switch (type) {
+      case 'booking_update': return 'text-blue-600';
+      case 'payment': return 'text-green-600';
+      case 'new_message': return 'text-[#FB5E7A]';
+      case 'offer': return 'text-purple-600';
+      case 'rating': return 'text-yellow-600';
+      default: return 'text-gray-600';
+    }
+  };
+
+  const formatTime = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+
+    // Less than an hour
+    if (diff < 3600000) {
+      const minutes = Math.floor(diff / 60000);
+      return `${minutes} ${language === 'ar' ? 'دقيقة' : 'm'}`;
+    }
+
+    // Less than 24 hours
+    if (diff < 86400000) {
+      const hours = Math.floor(diff / 3600000);
+      return `${hours} ${language === 'ar' ? 'ساعة' : 'h'}`;
+    }
+
+    // Older
+    return date.toLocaleDateString();
   };
 
   return (
     <div className="max-w-4xl mx-auto px-4 pb-8">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-[#FB5E7A]">{t.notifications}</h1>
-        <Button variant="ghost" size="sm" className="text-[#FB5E7A]">
-          {t.markAllRead}
-        </Button>
+        {notifications.some(n => !n.is_read) && (
+          <Button onClick={handleMarkAllRead} variant="ghost" size="sm" className="text-[#FB5E7A]">
+            {t.markAllRead}
+          </Button>
+        )}
       </div>
 
       <div className="space-y-2">
-        {mockNotifications.length === 0 ? (
+        {notifications.length === 0 ? (
           <div className="text-center py-12 text-gray-500">
             <Bell className="w-12 h-12 mx-auto mb-4 text-gray-400" />
             {t.noNotifications}
           </div>
         ) : (
-          mockNotifications.map((notification) => {
-            const IconComponent = notification.icon;
+          notifications.map((notification) => {
+            const IconComponent = getIcon(notification.type);
             return (
               <Card
                 key={notification.id}
-                className={`p-4 cursor-pointer hover:shadow-md transition-shadow ${
-                  !notification.read ? 'bg-[#FFD1DA]/10 border-[#FB5E7A]/30' : ''
-                }`}
+                onClick={() => handleMarkAsRead(notification.id, notification.is_read)}
+                className={`p-4 cursor-pointer hover:shadow-md transition-shadow ${!notification.is_read ? 'bg-[#FFD1DA]/10 border-[#FB5E7A]/30' : ''
+                  }`}
               >
                 <div className="flex gap-4">
                   <div className={`flex-shrink-0 w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center ${getIconColor(notification.type)}`}>
@@ -151,17 +179,17 @@ export default function SitterNotifications({ language }: SitterNotificationsPro
                   </div>
                   <div className="flex-1">
                     <div className="flex items-start justify-between mb-1">
-                      <h3 className="text-sm">{notification.title}</h3>
-                      {!notification.read && (
+                      <h3 className="text-sm font-medium">{notification.title}</h3>
+                      {!notification.is_read && (
                         <Badge className="bg-[#FB5E7A] text-white text-xs">
-                          {language === 'ar' ? 'جديد' : 'New'}
+                          {t.new}
                         </Badge>
                       )}
                     </div>
                     <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">
                       {notification.message}
                     </p>
-                    <span className="text-xs text-gray-500">{notification.time}</span>
+                    <span className="text-xs text-gray-500">{formatTime(notification.created_at)}</span>
                   </div>
                 </div>
               </Card>

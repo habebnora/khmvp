@@ -1,13 +1,12 @@
-import { useState } from 'react';
-import { Home, Calendar, User, Clock, FileText } from 'lucide-react';
+import { useState, lazy, Suspense } from 'react';
+import { Home, User, Clock, FileText } from 'lucide-react';
 import ClientHome from './client/ClientHome';
-import ClientBookings from './client/ClientBookings';
+const ClientBookings = lazy(() => import('./client/ClientBookings'));
 import ClientActiveBookings from './client/ClientActiveBookings';
 import ClientProfile from './client/ClientProfile';
-import type { Language } from '../App';
+import { useTranslation } from '../hooks/useTranslation';
 
 interface ClientAppProps {
-  language: Language;
   onLogout: () => void;
   onLanguageChange: () => void;
   theme: 'light' | 'dark';
@@ -16,35 +15,22 @@ interface ClientAppProps {
 
 type ClientTab = 'home' | 'requests' | 'schedule' | 'profile';
 
-const translations = {
-  ar: {
-    home: 'الرئيسية',
-    requests: 'الطلبات',
-    schedule: 'مواعيدي',
-    profile: 'الملف الشخصي',
-    logout: 'تسجيل خروج'
-  },
-  en: {
-    home: 'Home',
-    requests: 'Requests',
-    schedule: 'My Schedule',
-    profile: 'Profile',
-    logout: 'Logout'
-  }
-};
 
-export default function ClientApp({ language, onLogout, onLanguageChange, theme, onThemeChange }: ClientAppProps) {
+export default function ClientApp({ onLogout, onLanguageChange, theme, onThemeChange }: ClientAppProps) {
   const [activeTab, setActiveTab] = useState<ClientTab>('home');
-  const t = translations[language];
+  const { t, language } = useTranslation();
+  const clientT = t.client;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-20">
       {/* Main Content */}
       <div className="pt-4">
-        {activeTab === 'home' && <ClientHome language={language} />}
-        {activeTab === 'requests' && <ClientBookings language={language} />}
-        {activeTab === 'schedule' && <ClientActiveBookings language={language} />}
-        {activeTab === 'profile' && <ClientProfile language={language} onLogout={onLogout} onLanguageChange={onLanguageChange} theme={theme} onThemeChange={onThemeChange} />}
+        <Suspense fallback={<div>Loading...</div>}>
+          {activeTab === 'home' && <ClientHome onNavigate={(tab: ClientTab) => setActiveTab(tab)} />}
+          {activeTab === 'requests' && <ClientBookings />}
+          {activeTab === 'schedule' && <ClientActiveBookings onNavigate={(tab: 'home' | 'requests' | 'schedule' | 'profile') => setActiveTab(tab)} />}
+          {activeTab === 'profile' && <ClientProfile language={language} onLogout={onLogout} onLanguageChange={onLanguageChange} theme={theme} onThemeChange={onThemeChange} />}
+        </Suspense>
       </div>
 
       {/* Bottom Navigation */}
@@ -52,42 +38,38 @@ export default function ClientApp({ language, onLogout, onLanguageChange, theme,
         <div className="max-w-lg mx-auto flex justify-around items-center">
           <button
             onClick={() => setActiveTab('home')}
-            className={`flex flex-col items-center gap-1 ${
-              activeTab === 'home' ? 'text-[#FB5E7A]' : 'text-gray-500'
-            }`}
+            className={`flex flex-col items-center gap-1 ${activeTab === 'home' ? 'text-[#FB5E7A]' : 'text-gray-500'
+              }`}
           >
             <Home className="w-6 h-6" />
-            <span className="text-xs">{t.home}</span>
+            <span className="text-xs">{clientT.home}</span>
           </button>
 
           <button
             onClick={() => setActiveTab('requests')}
-            className={`flex flex-col items-center gap-1 ${
-              activeTab === 'requests' ? 'text-[#FB5E7A]' : 'text-gray-500'
-            }`}
+            className={`flex flex-col items-center gap-1 ${activeTab === 'requests' ? 'text-[#FB5E7A]' : 'text-gray-500'
+              }`}
           >
             <FileText className="w-6 h-6" />
-            <span className="text-xs">{t.requests}</span>
+            <span className="text-xs">{clientT.requests}</span>
           </button>
 
           <button
             onClick={() => setActiveTab('schedule')}
-            className={`flex flex-col items-center gap-1 ${
-              activeTab === 'schedule' ? 'text-[#FB5E7A]' : 'text-gray-500'
-            }`}
+            className={`flex flex-col items-center gap-1 ${activeTab === 'schedule' ? 'text-[#FB5E7A]' : 'text-gray-500'
+              }`}
           >
             <Clock className="w-6 h-6" />
-            <span className="text-xs">{t.schedule}</span>
+            <span className="text-xs">{clientT.schedule}</span>
           </button>
 
           <button
             onClick={() => setActiveTab('profile')}
-            className={`flex flex-col items-center gap-1 ${
-              activeTab === 'profile' ? 'text-[#FB5E7A]' : 'text-gray-500'
-            }`}
+            className={`flex flex-col items-center gap-1 ${activeTab === 'profile' ? 'text-[#FB5E7A]' : 'text-gray-500'
+              }`}
           >
             <User className="w-6 h-6" />
-            <span className="text-xs">{t.profile}</span>
+            <span className="text-xs">{clientT.profile}</span>
           </button>
         </div>
       </nav>

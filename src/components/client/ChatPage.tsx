@@ -1,56 +1,96 @@
-import { useState } from 'react';
-import { ArrowLeft, ArrowRight, Send, Phone, MoreVertical, Image as ImageIcon, Mic } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { ArrowLeft, ArrowRight, Send, MoreVertical, Image as ImageIcon, Mic } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
-import { Card } from '../ui/card';
-import type { Language } from '../../App';
+import { useAuthStore } from '../../stores/useAuthStore';
+import { chatService, type ChatMessage } from '../../services/chat';
+import { supabase } from '../../lib/supabase';
+import { useTranslation } from '../../hooks/useTranslation';
 
 interface ChatPageProps {
-  language: Language;
   onBack: () => void;
+  bookingId: string;
+  recipientId: string;
   recipientName?: string;
   recipientImage?: string;
 }
 
-const translations = {
-  ar: {
-    typeMessage: 'اكتب رسالة...',
-    online: 'متصل الآن',
-    send: 'إرسال'
-  },
-  en: {
-    typeMessage: 'Type a message...',
-    online: 'Online',
-    send: 'Send'
-  }
-};
+export default function ChatPage({
+  onBack,
+  bookingId,
+  recipientId,
+  recipientName = 'User',
+  recipientImage
+}: ChatPageProps) {
+  const { user } = useAuthStore();
+  const { t, language } = useTranslation();
+  const chatT = t.client.chatPage;
 
-const mockMessages = [
-  { id: 1, text: 'مرحباً، هل يمكنني الاستفسار عن موعد الحجز؟', sender: 'me', time: '10:30 AM' },
-  { id: 2, text: 'أهلاً بك! تفضلي، أنا متاحة للإجابة.', sender: 'other', time: '10:32 AM' },
-  { id: 3, text: 'هل يمكن تغيير الموعد لساعة مبكراً؟', sender: 'me', time: '10:33 AM' },
-  { id: 4, text: 'نعم، لا توجد مشكلة. سأقوم بتعديل الموعد.', sender: 'other', time: '10:35 AM' },
-];
-
-export default function ChatPage({ language, onBack, recipientName = 'Sitter', recipientImage }: ChatPageProps) {
-  const [messages, setMessages] = useState(mockMessages);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
-  const t = translations[language];
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const handleSend = () => {
-    if (!newMessage.trim()) return;
-    
-    setMessages([
-      ...messages,
-      {
-        id: Date.now(),
-        text: newMessage,
-        sender: 'me',
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    if (bookingId && user?.id) {
+      loadMessages();
+
+      const subscription = chatService.subscribeToMessages(bookingId, (newMsg) => {
+        setMessages(prev => {
+          if (prev.some(m => m.id.toLowerCase() === newMsg.id.toLowerCase())) return prev;
+          return [...prev, newMsg];
+        });
+        if (newMsg.receiver_id === user.id) {
+          chatService.markAsRead(bookingId, user.id);
+        }
+      });
+
+      return () => {
+        supabase.removeChannel(subscription);
+      };
+    }
+  }, [bookingId, user?.id]);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  const loadMessages = async () => {
+    try {
+      if (!bookingId) return;
+      const data = await chatService.getMessages(bookingId);
+      setMessages(data);
+      if (user?.id) {
+        await chatService.markAsRead(bookingId, user.id);
       }
-    ]);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handleSend = async () => {
+    if (!newMessage.trim() || !user?.id) return;
+
+    const content = newMessage;
     setNewMessage('');
+
+    try {
+      const msg = await chatService.sendMessage(bookingId, user.id, recipientId, content);
+      setMessages(prev => {
+        if (prev.some(m => m.id.toLowerCase() === msg.id.toLowerCase())) return prev;
+        return [...prev, msg];
+      });
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const formatTime = (dateStr: string) => {
+    return new Date(dateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
   return (
@@ -60,17 +100,17 @@ export default function ChatPage({ language, onBack, recipientName = 'Sitter', r
         <Button variant="ghost" size="icon" onClick={onBack}>
           {language === 'ar' ? <ArrowRight className="w-5 h-5" /> : <ArrowLeft className="w-5 h-5" />}
         </Button>
-        
+
         <Avatar className="h-10 w-10 border">
           <AvatarImage src={recipientImage} />
           <AvatarFallback>{recipientName[0]}</AvatarFallback>
         </Avatar>
-        
+
         <div className="flex-1">
           <h3 className="font-semibold text-sm">{recipientName}</h3>
           <span className="text-xs text-green-500 flex items-center gap-1">
             <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-            {t.online}
+            {chatT.online}
           </span>
         </div>
 
@@ -84,24 +124,23 @@ export default function ChatPage({ language, onBack, recipientName = 'Sitter', r
         {messages.map((msg) => (
           <div
             key={msg.id}
-            className={`flex ${msg.sender === 'me' ? 'justify-end' : 'justify-start'}`}
+            className={`flex ${msg.sender_id === user?.id ? 'justify-end' : 'justify-start'}`}
           >
             <div
-              className={`max-w-[75%] p-3 rounded-2xl ${
-                msg.sender === 'me'
-                  ? 'bg-[#FB5E7A] text-white rounded-br-none'
-                  : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-bl-none shadow-sm'
-              }`}
+              className={`max-w-[75%] p-3 rounded-2xl ${msg.sender_id === user?.id
+                ? 'bg-[#FB5E7A] text-white rounded-br-none'
+                : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-bl-none shadow-sm'
+                }`}
             >
-              <p className="text-sm">{msg.text}</p>
-              <span className={`text-[10px] mt-1 block ${
-                msg.sender === 'me' ? 'text-white/80' : 'text-gray-400'
-              }`}>
-                {msg.time}
+              <p className="text-sm">{msg.content}</p>
+              <span className={`text-[10px] mt-1 block ${msg.sender_id === user?.id ? 'text-white/80' : 'text-gray-400'
+                }`}>
+                {formatTime(msg.created_at)}
               </span>
             </div>
           </div>
         ))}
+        <div ref={messagesEndRef} />
       </div>
 
       {/* Input Area */}
@@ -113,16 +152,16 @@ export default function ChatPage({ language, onBack, recipientName = 'Sitter', r
           <Button variant="ghost" size="icon" className="text-gray-400">
             <Mic className="w-5 h-5" />
           </Button>
-          
+
           <Input
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-            placeholder={t.typeMessage}
+            placeholder={chatT.typeMessage}
             className="flex-1 bg-gray-100 dark:bg-gray-700 border-none rounded-full"
           />
-          
-          <Button 
+
+          <Button
             onClick={handleSend}
             className="bg-[#FB5E7A] hover:bg-[#e5536e] rounded-full w-10 h-10 p-0 flex items-center justify-center"
           >

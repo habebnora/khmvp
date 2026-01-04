@@ -1,12 +1,18 @@
-import { useState } from 'react';
-import { User, Star, Shield, Award, Edit, Plus, Trash2, LogOut, Phone, Mail, MapPin, Video, Upload, Check, Languages, Moon, Sun, DollarSign, Headphones } from 'lucide-react';
+import { Star, Loader2, Moon, Sun, Languages, LogOut, Trash2, Plus, Edit, Shield, Check, Upload, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
 import { Badge } from '../ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
+import { useAuthStore } from '../../stores/useAuthStore';
+import { sitterService } from '../../services/sitter';
+import { bookingService } from '../../services/booking';
+import { reviewService } from '../../services/review';
+import { supabase } from '../../lib/supabase';
+import { toast } from 'sonner';
 import type { Language } from '../../App';
 
 interface SitterProfileProps {
@@ -15,6 +21,7 @@ interface SitterProfileProps {
   onLanguageChange: () => void;
   theme: 'light' | 'dark';
   onThemeChange: () => void;
+  onBack?: () => void;
 }
 
 const translations = {
@@ -76,7 +83,13 @@ const translations = {
     minPriceError: 'سعر الساعة لا يجب أن يقل عن 30 جنيه',
     homeServices: 'خدمات منزلية',
     outsideServices: 'خدمات خارجية',
-    contactSupport: 'تواصل مع الدعم'
+    contactSupport: 'تواصل مع الدعم',
+    success: 'تمت العملية بنجاح',
+    error: 'حدث خطأ ما',
+    visibilitySettings: 'إعدادات الظهور',
+    visibilityDesc: 'عند تعطيل هذه الخاصية، لن تظهري للعملاء في نتائج البحث، ولكن ستظلين قادرة على إكمال طلباتك الحالية.',
+    activeStatus: 'الحساب نشط الآن',
+    inactiveStatus: 'الحساب متوقف حالياً'
   },
   en: {
     profile: 'Profile',
@@ -132,585 +145,532 @@ const translations = {
     serviceOutside: 'Accompaniment Outside Home',
     serviceWeekly: 'Weekly Sessions',
     serviceMonthly: 'Monthly Sessions',
+    themeLight: 'Light Mode',
+    themeDark: 'Dark Mode',
     setPrice: 'Set Hourly Rate',
     minPriceError: 'Hourly rate must be at least 30 EGP',
     homeServices: 'Home Services',
     outsideServices: 'Outside Services',
-    contactSupport: 'Contact Support'
+    contactSupport: 'Contact Support',
+    success: 'Operation Successful',
+    error: 'Something went wrong',
+    visibilitySettings: 'Visibility Settings',
+    visibilityDesc: 'When disabled, you will not appear in client search results, but you can still complete your ongoing bookings.',
+    activeStatus: 'Account is Active',
+    inactiveStatus: 'Account is Paused'
   }
 };
 
-export default function SitterProfile({ language, onLogout, onLanguageChange, theme, onThemeChange }: SitterProfileProps) {
+export default function SitterProfile({ language, onLogout, onLanguageChange, theme, onThemeChange, onBack }: SitterProfileProps) {
+  const { user } = useAuthStore();
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [showAddSkillDialog, setShowAddSkillDialog] = useState(false);
+  const [showAddLanguageDialog, setShowAddLanguageDialog] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const t = translations[language];
 
   const [profile, setProfile] = useState({
-    name: language === 'ar' ? 'فاطمة أحمد' : 'Fatima Ahmed',
-    email: 'fatima@example.com',
-    phone: '+20 100 123 4567',
-    location: language === 'ar' ? 'المنيا الجديدة' : 'New Minya',
-    bio: language === 'ar'
-      ? 'خالة أطفال محترفة مع خبرة تزيد عن 5 سنوات في رعاية الأطفال من مختلف الأعمار.'
-      : 'Professional babysitter with over 5 years of experience caring for children of all ages.',
-    experience: 5,
-    rating: 4.8,
-    reviews: 124,
-    completedJobs: 156,
-    memberSince: '2023-01',
-    isVerified: true
+    name: user?.user_metadata?.full_name || '',
+    email: user?.email || '',
+    phone: user?.user_metadata?.phone || '',
+    location: '',
+    bio: '',
+    experience: 0,
+    rating: 5.0,
+    reviews: 0,
+    completedJobs: 0,
+    memberSince: '',
+    isVerified: false,
+    avatarUrl: ''
   });
 
-  const [skills, setSkills] = useState([
-    language === 'ar' ? 'رعاية أطفال' : 'Childcare',
-    language === 'ar' ? 'تعليم' : 'Education',
-    language === 'ar' ? 'إسعافات أولية' : 'First Aid',
-    language === 'ar' ? 'طبخ صحي' : 'Healthy Cooking'
-  ]);
-
-  const [languages, setLanguages] = useState(['العربية', 'English']);
+  const [loading, setLoading] = useState(true);
+  const [skills, setSkills] = useState<{ id: string, skill: string }[]>([]);
+  const [languagesList, setLanguagesList] = useState<{ id: string, language: string }[]>([]);
   const [newSkill, setNewSkill] = useState('');
+  const [newLanguage, setNewLanguage] = useState('');
   const [availabilityType, setAvailabilityType] = useState<'home' | 'outside' | 'both'>('both');
+  const [isActive, setIsActive] = useState(true);
+  const [isUpdatingVisibility, setIsUpdatingVisibility] = useState(false);
 
-  // Service Prices
-  const [servicePrices, setServicePrices] = useState({
-    outside: 50,
-    weekly: 40,
-    monthly: 35
-  });
+  useEffect(() => {
+    if (user?.id) {
+      loadProfile();
+      loadExtensions();
+      loadRatings();
 
-  const handlePriceChange = (service: 'outside' | 'weekly' | 'monthly', value: string) => {
-    const numValue = parseInt(value) || 0;
-    setServicePrices(prev => ({ ...prev, [service]: numValue }));
+      const channel = supabase
+        .channel(`profile-updates-${user.id}`)
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${user.id}` },
+          (payload) => {
+            const updatedProfile = payload.new as any;
+            if (updatedProfile.is_verified !== undefined) {
+              setProfile(prev => ({ ...prev, isVerified: updatedProfile.is_verified }));
+              if (updatedProfile.is_verified) {
+                toast.success(language === 'ar' ? 'تم توثيق حسابك بنجاح!' : 'Your account has been verified!');
+              }
+            }
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+  }, [user?.id]);
+
+  const loadRatings = async () => {
+    try {
+      if (!user?.id) return;
+      const { average, count } = await reviewService.getSitterAverageRating(user.id);
+      setProfile(prev => ({
+        ...prev,
+        rating: count > 0 ? average : 5.0,
+        reviews: count
+      }));
+    } catch (error) {
+      console.error(error);
+    }
   };
 
-  const handleSaveProfile = () => {
-    setIsEditingProfile(false);
-    alert(language === 'ar' ? 'تم حفظ التغييرات' : 'Changes saved');
+  const loadProfile = async () => {
+    try {
+      setLoading(true);
+      if (!user?.id) return;
+      const data = await sitterService.getProfile(user.id);
+      const bookings = await bookingService.getSitterBookings(user.id);
+      const completedCount = bookings.filter((b: any) => b.status === 'completed').length;
+
+      if (data) {
+        setProfile(prev => ({
+          ...prev,
+          name: data.full_name || user?.user_metadata?.full_name || '',
+          email: user?.email || '',
+          phone: data.phone || user?.user_metadata?.phone || '',
+          location: data.location || '',
+          bio: data.bio || '',
+          experience: data.experience_years || 0,
+          isVerified: data.is_verified || false,
+          memberSince: new Date(data.created_at).toLocaleDateString(),
+          completedJobs: completedCount,
+          avatarUrl: data.avatar_url || 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400'
+        }));
+        if (data.availability_type) setAvailabilityType(data.availability_type);
+        setIsActive((data as any).is_active ?? true);
+      }
+    } catch (error) {
+      console.error('Error loading profile:', error);
+      toast.error(t.error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleSaveServices = () => {
-    // Validate prices
-    if (
-      ((availabilityType === 'outside' || availabilityType === 'both') && servicePrices.outside < 30) ||
-      ((availabilityType === 'home' || availabilityType === 'both') && (servicePrices.weekly < 30 || servicePrices.monthly < 30))
-    ) {
-      alert(t.minPriceError);
+  const loadExtensions = async () => {
+    try {
+      if (!user?.id) return;
+      const [skillsData, languagesData] = await Promise.all([
+        sitterService.getSkills(user.id),
+        sitterService.getLanguages(user.id)
+      ]);
+      if (skillsData) setSkills(skillsData.map((s: any) => ({ id: s.id, skill: s.skill })));
+      if (languagesData) setLanguagesList(languagesData.map((l: any) => ({ id: l.id, language: l.language })));
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user?.id) return;
+
+    // Validation
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error(language === 'ar' ? 'حجم الصورة يجب أن لا يتعدى 5 ميجابايت' : 'Image size must be less than 5MB');
       return;
     }
-    alert(language === 'ar' ? 'تم حفظ أسعار الخدمات' : 'Service prices saved');
-  };
 
-  const handleAddSkill = () => {
-    if (newSkill.trim()) {
-      setSkills([...skills, newSkill]);
-      setNewSkill('');
-      setShowAddSkillDialog(false);
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      toast.error(language === 'ar' ? 'يجب أن تكون الصورة بصيغة JPG, PNG أو WebP' : 'Image must be JPG, PNG or WebP');
+      return;
+    }
+
+    try {
+      setIsUploadingAvatar(true);
+      const url = await sitterService.updateAvatar(user.id, file);
+      setProfile(prev => ({ ...prev, avatarUrl: url }));
+      toast.success(t.success);
+    } catch (error) {
+      console.error(error);
+      toast.error(t.error);
+    } finally {
+      setIsUploadingAvatar(false);
     }
   };
 
-  const handleDeleteSkill = (index: number) => {
-    setSkills(skills.filter((_, i) => i !== index));
+  const handleSaveProfile = async () => {
+    try {
+      if (!user?.id) return;
+      await sitterService.updateProfile(user.id, {
+        full_name: profile.name,
+        phone: profile.phone,
+        location: profile.location,
+        bio: profile.bio,
+        experience_years: profile.experience,
+        availability_type: availabilityType,
+        is_active: isActive as any
+      });
+      setIsEditingProfile(false);
+      toast.success(t.success);
+    } catch (error) {
+      console.error(error);
+      toast.error(t.error);
+    }
   };
 
-  return (
-    <div className="max-w-4xl mx-auto px-4 pb-8">
-      <h1 className="text-[#FB5E7A] mb-6">{t.profile}</h1>
+  const handleToggleVisibility = async () => {
+    if (!user?.id || isUpdatingVisibility) return;
+    try {
+      setIsUpdatingVisibility(true);
+      const newStatus = !isActive;
+      await sitterService.updateProfile(user.id, { is_active: newStatus as any });
+      setIsActive(newStatus);
+      toast.success(t.success);
+    } catch (error) {
+      console.error(error);
+      toast.error(t.error);
+    } finally {
+      setIsUpdatingVisibility(false);
+    }
+  };
 
-      {/* Profile Header */}
-      <Card className="p-6 mb-6">
-        <div className="flex items-center gap-4 mb-4">
-          <div className="relative">
-            <div className="w-20 h-20 rounded-full bg-[#FFD1DA] flex items-center justify-center overflow-hidden">
-              <img
-                src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400"
-                alt={profile.name}
-                className="w-full h-full object-cover"
-              />
-            </div>
-            {profile.isVerified && (
-              <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
-                <Check className="w-4 h-4 text-white" />
+  const handleAddSkill = async () => {
+    if (newSkill.trim() && user?.id) {
+      try {
+        await sitterService.addSkill(user.id, newSkill);
+        setNewSkill('');
+        setShowAddSkillDialog(false);
+        await loadExtensions();
+        toast.success(t.success);
+      } catch (error) {
+        toast.error(t.error);
+      }
+    }
+  };
+
+  const handleDeleteSkill = async (id: string) => {
+    try {
+      await sitterService.removeSkill(id);
+      setSkills(skills.filter(s => s.id !== id));
+    } catch (error) {
+      toast.error(t.error);
+    }
+  };
+
+  const handleAddLanguage = async () => {
+    if (newLanguage.trim() && user?.id) {
+      try {
+        await sitterService.addLanguage(user.id, newLanguage);
+        setNewLanguage('');
+        setShowAddLanguageDialog(false);
+        await loadExtensions();
+        toast.success(t.success);
+      } catch (error) {
+        toast.error(t.error);
+      }
+    }
+  };
+
+  const handleDeleteLanguage = async (id: string) => {
+    try {
+      await sitterService.removeLanguage(id);
+      setLanguagesList(languagesList.filter(l => l.id !== id));
+      toast.success(t.success);
+    } catch (error) {
+      toast.error(t.error);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 animate-spin text-[#FB5E7A]" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-20">
+      {/* Sticky Header */}
+      <div className="sticky top-0 z-50 bg-gray-50 dark:bg-gray-900 pt-6 pb-4 -mx-4 px-8 mb-4 border-b border-gray-100 dark:border-gray-800">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={onBack} className="rounded-full">
+            {language === 'ar' ? <ChevronRight className="w-6 h-6" /> : <ChevronLeft className="w-6 h-6" />}
+          </Button>
+          <h1 className="text-[#FB5E7A] text-2xl font-bold">{t.profile}</h1>
+        </div>
+      </div>
+
+      <div className="max-w-4xl mx-auto px-4 py-6">
+        {/* Profile Header */}
+        <Card className="p-6 mb-6">
+          <div className="flex items-center gap-4 mb-4">
+            <div className="relative group">
+              <div
+                className={`w-20 h-20 rounded-full bg-[#FFD1DA] flex items-center justify-center overflow-hidden border-2 border-transparent group-hover:border-[#FB5E7A] transition-all cursor-pointer ${isUploadingAvatar ? 'opacity-50' : ''}`}
+                onClick={() => document.getElementById('avatar-input')?.click()}
+              >
+                <img
+                  src={profile.avatarUrl}
+                  alt={profile.name}
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Upload className="w-6 h-6 text-white" />
+                </div>
+                {isUploadingAvatar && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <Loader2 className="w-6 h-6 animate-spin text-[#FB5E7A]" />
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-          <div className="flex-1">
-            <h2 className="text-[#FB5E7A] mb-1">{profile.name}</h2>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-              {t.memberSince} {profile.memberSince}
-            </p>
-            <div className="flex items-center gap-2">
+              <input id="avatar-input" type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} disabled={isUploadingAvatar} />
+              <p className="text-[10px] text-gray-500 text-center mt-2 w-24 mx-auto">
+                {language === 'ar' ? 'JPG, PNG - بحد أقصى 5 ميجا' : 'JPG, PNG - Max 5MB'}
+              </p>
+              {profile.isVerified && (
+                <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center ring-2 ring-white dark:ring-gray-800">
+                  <Check className="w-4 h-4 text-white" />
+                </div>
+              )}
+            </div>
+            <div className="flex-1">
+              <h2 className="text-[#FB5E7A] mb-1">{profile.name}</h2>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">{t.memberSince} {profile.memberSince}</p>
               {profile.isVerified && (
                 <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
                   <Shield className="w-3 h-3 mr-1" />
                   {t.verified}
                 </Badge>
               )}
-              <Badge variant="outline">
-                <Award className="w-3 h-3 mr-1" />
-                {language === 'ar' ? 'إسعافات أولية' : 'First Aid'}
-              </Badge>
             </div>
           </div>
-        </div>
-
-        {/* Stats */}
-        <div className="grid grid-cols-2 gap-4 pt-4 border-t">
-          <div className="text-center">
-            <div className="flex items-center justify-center gap-1 text-[#FB5E7A] mb-1">
-              <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-              <span>{profile.rating}</span>
+          <div className="grid grid-cols-2 gap-4 pt-4 border-t">
+            <div className="text-center">
+              <div className="flex items-center justify-center gap-1 text-[#FB5E7A] mb-1">
+                <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                <span>{profile.rating}</span>
+              </div>
+              <p className="text-xs text-gray-600 dark:text-gray-400">{profile.reviews} {t.reviews}</p>
             </div>
-            <p className="text-xs text-gray-600 dark:text-gray-400">
-              {profile.reviews} {t.reviews}
-            </p>
+            <div className="text-center">
+              <div className="text-[#FB5E7A] mb-1">{profile.completedJobs}</div>
+              <p className="text-xs text-gray-600 dark:text-gray-400">{t.completedJobs}</p>
+            </div>
           </div>
-          <div className="text-center">
-            <div className="text-[#FB5E7A] mb-1">{profile.completedJobs}</div>
-            <p className="text-xs text-gray-600 dark:text-gray-400">{t.completedJobs}</p>
-          </div>
-        </div>
-      </Card>
+        </Card>
 
-      {/* Personal Information */}
-      <Card className="p-6 mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3>{t.personalInfo}</h3>
-          {!isEditingProfile && (
+        {/* Visibility Toggle */}
+        <Card className="p-6 mb-6 border-2 transition-all duration-300 bg-white dark:bg-gray-800">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-3">
+              <Eye className="w-5 h-5 text-[#FB5E7A]" />
+              <h3 className="font-bold">{t.visibilitySettings}</h3>
+            </div>
             <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setIsEditingProfile(true)}
-              className="text-[#FB5E7A]"
+              variant={isActive ? "default" : "outline"}
+              className={isActive ? "bg-green-600 hover:bg-green-700" : "border-red-500 text-red-500 cursor-pointer"}
+              onClick={handleToggleVisibility}
+              disabled={isUpdatingVisibility}
             >
-              <Edit className="w-4 h-4 mr-2" />
-              {t.edit}
+              {isUpdatingVisibility ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : isActive ? <Check className="w-4 h-4 mr-2" /> : <Moon className="w-4 h-4 mr-2" />}
+              {isActive ? t.activeStatus : t.inactiveStatus}
             </Button>
-          )}
-        </div>
-
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">{t.fullName}</Label>
-            <Input
-              id="name"
-              value={profile.name}
-              onChange={(e) => setProfile({ ...profile, name: e.target.value })}
-              disabled={!isEditingProfile}
-            />
           </div>
+          <p className="text-sm text-gray-500">{t.visibilityDesc}</p>
+        </Card>
 
-          <div className="space-y-2">
-            <Label htmlFor="email">{t.email}</Label>
-            <div className="flex items-center gap-2">
-              <Mail className="w-4 h-4 text-gray-400" />
+        {/* Personal Information */}
+        <Card className="p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3>{t.personalInfo}</h3>
+            {!isEditingProfile && (
+              <Button variant="ghost" size="sm" onClick={() => setIsEditingProfile(true)} className="text-[#FB5E7A]">
+                <Edit className="w-4 h-4 mr-2" />
+                {t.edit}
+              </Button>
+            )}
+          </div>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>{t.fullName}</Label>
               <Input
-                id="email"
-                type="email"
+                value={profile.name}
+                onChange={(e) => setProfile({ ...profile, name: e.target.value })}
+                disabled={true}
+                className="bg-gray-50 cursor-not-allowed"
+              />
+              {isEditingProfile && (
+                <p className="text-[10px] text-gray-500 mt-1">
+                  {language === 'ar' ? '* لا يمكن تغيير الاسم' : '* Name cannot be changed'}
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>{t.email}</Label>
+              <Input
                 value={profile.email}
                 onChange={(e) => setProfile({ ...profile, email: e.target.value })}
-                disabled={!isEditingProfile}
+                disabled={true}
+                className="bg-gray-50 cursor-not-allowed"
               />
+              {isEditingProfile && (
+                <p className="text-[10px] text-gray-500 mt-1">
+                  {language === 'ar' ? '* لا يمكن تغيير البريد الإلكتروني' : '* Email cannot be changed'}
+                </p>
+              )}
             </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="phone">{t.phone}</Label>
-            <div className="flex items-center gap-2">
-              <Phone className="w-4 h-4 text-gray-400" />
-              <Input
-                id="phone"
-                type="tel"
-                value={profile.phone}
-                onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
-                disabled={!isEditingProfile}
-              />
+            <div className="space-y-2">
+              <Label>{t.phone}</Label>
+              <Input value={profile.phone} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} disabled={!isEditingProfile} />
             </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="location">{t.location}</Label>
-            <div className="flex items-center gap-2">
-              <MapPin className="w-4 h-4 text-gray-400" />
-              <Input
-                id="location"
-                value={profile.location}
-                onChange={(e) => setProfile({ ...profile, location: e.target.value })}
-                disabled={!isEditingProfile}
-              />
+            <div className="space-y-2">
+              <Label>{t.location}</Label>
+              <Input value={profile.location} onChange={(e) => setProfile({ ...profile, location: e.target.value })} disabled={!isEditingProfile} />
             </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="bio">{t.bio}</Label>
-            <Textarea
-              id="bio"
-              value={profile.bio}
-              onChange={(e) => setProfile({ ...profile, bio: e.target.value })}
-              disabled={!isEditingProfile}
-              rows={4}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="experience">{t.experience}</Label>
-            <Input
-              id="experience"
-              type="number"
-              value={profile.experience}
-              onChange={(e) => setProfile({ ...profile, experience: parseInt(e.target.value) || 0 })}
-              disabled={!isEditingProfile}
-            />
-          </div>
-
-          {isEditingProfile && (
-            <div className="flex gap-2 pt-2">
-              <Button
-                onClick={handleSaveProfile}
-                className="flex-1 bg-[#FB5E7A] hover:bg-[#e5536e]"
-              >
-                {t.save}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => setIsEditingProfile(false)}
-                className="flex-1"
-              >
-                {t.cancel}
-              </Button>
+            <div className="space-y-2">
+              <Label>{t.bio}</Label>
+              <Textarea value={profile.bio} onChange={(e) => setProfile({ ...profile, bio: e.target.value })} disabled={!isEditingProfile} rows={4} />
             </div>
-          )}
-        </div>
-      </Card>
-
-      {/* Availability Settings */}
-      <Card className="p-6 mb-6">
-        <h3 className="mb-4">{t.availabilitySettings}</h3>
-        <div className="space-y-3">
-          <div
-            onClick={() => setAvailabilityType('home')}
-            className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
-              availabilityType === 'home' ? 'border-[#FB5E7A] bg-[#FFD1DA]/20' : 'border-gray-200 dark:border-gray-700'
-            }`}
-          >
-            <h4 className="mb-1">{t.atHomeOnly}</h4>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              {language === 'ar' ? 'سأكون متاحة للعمل في منزل العميل فقط' : 'I will be available to work at client\'s home only'}
-            </p>
-          </div>
-          <div
-            onClick={() => setAvailabilityType('outside')}
-            className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
-              availabilityType === 'outside' ? 'border-[#FB5E7A] bg-[#FFD1DA]/20' : 'border-gray-200 dark:border-gray-700'
-            }`}
-          >
-            <h4 className="mb-1">{t.outsideOnly}</h4>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              {language === 'ar' ? 'سأكون متاحة للعمل خارج المنزل فقط' : 'I will be available to work outside only'}
-            </p>
-          </div>
-          <div
-            onClick={() => setAvailabilityType('both')}
-            className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
-              availabilityType === 'both' ? 'border-[#FB5E7A] bg-[#FFD1DA]/20' : 'border-gray-200 dark:border-gray-700'
-            }`}
-          >
-            <h4 className="mb-1">{t.both}</h4>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              {language === 'ar' ? 'سأكون متاحة للعمل في المنزل وخارج المنزل' : 'I will be available to work at home and outside'}
-            </p>
-          </div>
-        </div>
-      </Card>
-
-      {/* My Services */}
-      <Card className="p-6 mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3>{t.myServices}</h3>
-          <Button onClick={handleSaveServices} size="sm" className="bg-[#FB5E7A] hover:bg-[#e5536e]">
-            {t.save}
-          </Button>
-        </div>
-
-        <div className="space-y-6">
-          {/* Outside Services */}
-          {(availabilityType === 'outside' || availabilityType === 'both') && (
-            <div className="space-y-3">
-              <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 border-b pb-2">
-                {t.outsideServices}
-              </h4>
-              <div className="p-4 border rounded-lg bg-gray-50 dark:bg-gray-800">
-                <div className="flex flex-col gap-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-medium">{t.serviceOutside}</h4>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        {language === 'ar' ? 'مرافقة الطفل في النادي، التمارين، أو المناسبات الخارجية' : 'Accompanying the child to the club, practice, or events'}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <DollarSign className="w-4 h-4 text-gray-500" />
-                    <Label className="whitespace-nowrap">{t.setPrice} ({t.egp}):</Label>
-                    <Input 
-                      type="number" 
-                      min="30"
-                      value={servicePrices.outside}
-                      onChange={(e) => handlePriceChange('outside', e.target.value)}
-                      className="w-32"
-                    />
-                  </div>
-                  {servicePrices.outside < 30 && (
-                    <p className="text-xs text-red-500">{t.minPriceError}</p>
-                  )}
-                </div>
+            <div className="space-y-2">
+              <Label>{t.experience}</Label>
+              <Input type="number" value={profile.experience} onChange={(e) => setProfile({ ...profile, experience: parseInt(e.target.value) || 0 })} disabled={!isEditingProfile} />
+            </div>
+            {isEditingProfile && (
+              <div className="flex gap-2">
+                <Button onClick={handleSaveProfile} className="flex-1 bg-[#FB5E7A]">
+                  {t.save}
+                </Button>
+                <Button variant="outline" onClick={() => setIsEditingProfile(false)} className="flex-1">
+                  {t.cancel}
+                </Button>
               </div>
-            </div>
-          )}
-
-          {/* Home Services */}
-          {(availabilityType === 'home' || availabilityType === 'both') && (
-            <div className="space-y-3">
-              <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 border-b pb-2">
-                {t.homeServices}
-              </h4>
-              
-              {/* Weekly Sessions */}
-              <div className="p-4 border rounded-lg bg-gray-50 dark:bg-gray-800">
-                <div className="flex flex-col gap-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-medium">{t.serviceWeekly}</h4>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        {language === 'ar' ? 'جلسات رعاية منتظمة أسبوعياً في منزل العميل' : 'Regular weekly care sessions at the client\'s home'}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <DollarSign className="w-4 h-4 text-gray-500" />
-                    <Label className="whitespace-nowrap">{t.setPrice} ({t.egp}):</Label>
-                    <Input 
-                      type="number" 
-                      min="30"
-                      value={servicePrices.weekly}
-                      onChange={(e) => handlePriceChange('weekly', e.target.value)}
-                      className="w-32"
-                    />
-                  </div>
-                  {servicePrices.weekly < 30 && (
-                    <p className="text-xs text-red-500">{t.minPriceError}</p>
-                  )}
-                </div>
-              </div>
-
-              {/* Monthly Sessions */}
-              <div className="p-4 border rounded-lg bg-gray-50 dark:bg-gray-800">
-                <div className="flex flex-col gap-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-medium">{t.serviceMonthly}</h4>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        {language === 'ar' ? 'باقات شهرية لرعاية ومتابعة الطفل' : 'Monthly packages for child care and monitoring'}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <DollarSign className="w-4 h-4 text-gray-500" />
-                    <Label className="whitespace-nowrap">{t.setPrice} ({t.egp}):</Label>
-                    <Input 
-                      type="number" 
-                      min="30"
-                      value={servicePrices.monthly}
-                      onChange={(e) => handlePriceChange('monthly', e.target.value)}
-                      className="w-32"
-                    />
-                  </div>
-                  {servicePrices.monthly < 30 && (
-                    <p className="text-xs text-red-500">{t.minPriceError}</p>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </Card>
-
-      {/* Skills */}
-      <Card className="p-6 mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3>{t.skills}</h3>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowAddSkillDialog(true)}
-            className="text-[#FB5E7A]"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            {t.addSkill}
-          </Button>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          {skills.map((skill, index) => (
-            <Badge key={index} className="bg-[#FFD1DA] text-[#FB5E7A] pr-1">
-              {skill}
-              <button
-                onClick={() => handleDeleteSkill(index)}
-                className="ml-2 hover:text-red-500"
-              >
-                <Trash2 className="w-3 h-3" />
-              </button>
-            </Badge>
-          ))}
-        </div>
-      </Card>
-
-      {/* Languages */}
-      <Card className="p-6 mb-6">
-        <h3 className="mb-4">{t.languages}</h3>
-        <div className="flex flex-wrap gap-2">
-          {languages.map((lang, index) => (
-            <Badge key={index} variant="outline">{lang}</Badge>
-          ))}
-        </div>
-      </Card>
-
-      {/* Verification */}
-      <Card className="p-6 mb-6">
-        <h3 className="mb-4">{t.verification}</h3>
-        <div className="space-y-3">
-          <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-            <div className="flex items-center gap-3">
-              <Shield className="w-5 h-5 text-blue-600" />
-              <div>
-                <h4 className="text-sm">{t.idCard}</h4>
-                <p className="text-xs text-gray-500">{t.approved}</p>
-              </div>
-            </div>
-            <Badge className="bg-green-100 text-green-700">
-              <Check className="w-3 h-3 mr-1" />
-              {t.verified}
-            </Badge>
+            )}
           </div>
+        </Card>
 
-          <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-            <div className="flex items-center gap-3">
-              <Video className="w-5 h-5 text-purple-600" />
-              <div>
-                <h4 className="text-sm">{t.introVideo}</h4>
-                <p className="text-xs text-gray-500">{t.approved}</p>
-              </div>
-            </div>
-            <Badge className="bg-green-100 text-green-700">
-              <Check className="w-3 h-3 mr-1" />
-              {t.verified}
-            </Badge>
-          </div>
-
-          <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-            <div className="flex items-center gap-3">
-              <Award className="w-5 h-5 text-yellow-600" />
-              <div>
-                <h4 className="text-sm">{t.certificates}</h4>
-                <p className="text-xs text-gray-500">{language === 'ar' ? '2 شهادات' : '2 certificates'}</p>
-              </div>
-            </div>
-            <Button size="sm" variant="outline">
-              <Upload className="w-4 h-4 mr-2" />
-              {t.uploadCertificate}
+        {/* Availability Settings */}
+        <Card className="p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3>{t.availabilitySettings}</h3>
+            <Button onClick={handleSaveProfile} size="sm" className="bg-[#FB5E7A]">
+              {t.save}
             </Button>
           </div>
-        </div>
-      </Card>
-
-      {/* Language Settings */}
-      <Card className="p-6 mb-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Languages className="w-5 h-5 text-[#FB5E7A]" />
-            <div>
-              <h3 className="mb-1">{t.language}</h3>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                {language === 'ar' ? 'العربية' : 'English'}
-              </p>
-            </div>
+          <div className="space-y-3">
+            {['home', 'outside', 'both'].map((type) => (
+              <div
+                key={type}
+                onClick={() => setAvailabilityType(type as any)}
+                className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${availabilityType === type ? 'border-[#FB5E7A] bg-[#FFD1DA]/20' : 'border-gray-200 dark:border-gray-700'}`}
+              >
+                <h4 className="mb-1">{t[`${type}Only` as keyof typeof t] || t.both}</h4>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  {language === 'ar' ? 'سأكون متاحة للعمل حسب الاختيار' : 'I will be available based on this choice'}
+                </p>
+              </div>
+            ))}
           </div>
-          <Button
-            variant="outline"
-            onClick={onLanguageChange}
-            className="border-[#FB5E7A] text-[#FB5E7A]"
-          >
-            {language === 'ar' ? '🇬🇧 EN' : '🇪🇬 AR'}
+        </Card>
+
+        {/* Skills */}
+        <Card className="p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3>{t.skills}</h3>
+            <Button variant="ghost" size="sm" onClick={() => setShowAddSkillDialog(true)} className="text-[#FB5E7A]">
+              <Plus className="w-4 h-4 mr-2" />
+              {t.addSkill}
+            </Button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {skills.map((skillItem) => (
+              <Badge key={skillItem.id} className="bg-[#FFD1DA] text-[#FB5E7A] pr-1">
+                {skillItem.skill}
+                <button onClick={() => handleDeleteSkill(skillItem.id)} className="ml-2 hover:text-red-500">
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </Badge>
+            ))}
+          </div>
+        </Card>
+
+        {/* Languages */}
+        <Card className="p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3>{t.languages}</h3>
+            <Button variant="ghost" size="sm" onClick={() => setShowAddLanguageDialog(true)} className="text-[#FB5E7A]">
+              <Plus className="w-4 h-4 mr-2" />
+              {t.addLanguage}
+            </Button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {languagesList.map((langItem) => (
+              <Badge key={langItem.id} className="bg-[#E5E7EB] text-gray-700 pr-1">
+                {langItem.language}
+                <button onClick={() => handleDeleteLanguage(langItem.id)} className="ml-2 hover:text-red-500">
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </Badge>
+            ))}
+          </div>
+        </Card>
+
+        {/* Settings & Logout */}
+        <div className="space-y-4">
+          <Button variant="outline" className="w-full h-12 flex justify-between px-6 border-[#FB5E7A] text-[#FB5E7A]" onClick={onLanguageChange}>
+            <div className="flex items-center gap-3">
+              <Languages className="w-5 h-5" />
+              <span>{t.language}</span>
+            </div>
+            <span>{language === 'ar' ? '🇬🇧 EN' : '🇪🇬 AR'}</span>
+          </Button>
+
+          <Button variant="outline" className="w-full h-12 flex justify-between px-6 border-[#FB5E7A] text-[#FB5E7A]" onClick={onThemeChange}>
+            <div className="flex items-center gap-3">
+              {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+              <span>{t.theme}</span>
+            </div>
+            <span>{theme === 'light' ? t.darkMode : t.lightMode}</span>
+          </Button>
+
+          <Button variant="outline" className="w-full h-12 border-red-500 text-red-500 hover:bg-red-50" onClick={onLogout}>
+            <LogOut className="w-5 h-5 mr-3" />
+            {t.logout}
           </Button>
         </div>
-      </Card>
-
-      {/* Theme Settings */}
-      <Card className="p-6 mb-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            {theme === 'light' ? <Moon className="w-5 h-5 text-[#FB5E7A]" /> : <Sun className="w-5 h-5 text-[#FB5E7A]" />}
-            <div>
-              <h3 className="mb-1">{t.theme}</h3>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                {theme === 'light' ? t.lightMode : t.darkMode}
-              </p>
-            </div>
-          </div>
-          <Button
-            variant="outline"
-            onClick={onThemeChange}
-            className="border-[#FB5E7A] text-[#FB5E7A]"
-          >
-            {theme === 'light' ? t.darkMode : t.lightMode}
-          </Button>
-        </div>
-      </Card>
-
-      {/* Contact Support */}
-      <Button
-        variant="outline"
-        className="w-full mb-4 border-[#FB5E7A] text-[#FB5E7A] hover:bg-[#FB5E7A]/10"
-        onClick={() => alert(language === 'ar' ? 'سيتم فتح محادثة مع الدعم الفني' : 'Support chat will open')}
-      >
-        <Headphones className="w-4 h-4 mr-2" />
-        {t.contactSupport}
-      </Button>
-
-      {/* Logout Button */}
-      <Button
-        variant="outline"
-        onClick={onLogout}
-        className="w-full border-red-500 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10"
-      >
-        <LogOut className="w-4 h-4 mr-2" />
-        {t.logout}
-      </Button>
+      </div>
 
       {/* Add Skill Dialog */}
       <Dialog open={showAddSkillDialog} onOpenChange={setShowAddSkillDialog}>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t.addSkill}</DialogTitle>
-            <DialogDescription className="sr-only">
-              {language === 'ar' ? 'أضف مهارة جديدة لملفك الشخصي' : 'Add a new skill to your profile'}
-            </DialogDescription>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>{t.addSkill}</DialogTitle></DialogHeader>
           <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="skillName">{t.skillName}</Label>
-              <Input
-                id="skillName"
-                value={newSkill}
-                onChange={(e) => setNewSkill(e.target.value)}
-              />
-            </div>
-            <Button
-              onClick={handleAddSkill}
-              className="w-full bg-[#FB5E7A] hover:bg-[#e5536e]"
-            >
-              {t.addSkill}
-            </Button>
+            <Input value={newSkill} onChange={(e) => setNewSkill(e.target.value)} placeholder={t.skillName} />
+            <Button onClick={handleAddSkill} className="w-full bg-[#FB5E7A]">{t.addSkill}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Language Dialog */}
+      <Dialog open={showAddLanguageDialog} onOpenChange={setShowAddLanguageDialog}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>{t.addLanguage}</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-4">
+            <Input value={newLanguage} onChange={(e) => setNewLanguage(e.target.value)} placeholder={t.language} />
+            <Button onClick={handleAddLanguage} className="w-full bg-[#FB5E7A]">{t.addLanguage}</Button>
           </div>
         </DialogContent>
       </Dialog>

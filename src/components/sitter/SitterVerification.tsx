@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { ArrowLeft, ArrowRight, Upload, Check, X, FileText, AlertCircle, Shield } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ArrowLeft, ArrowRight, Upload, Check, X, FileText, AlertCircle, Shield, Loader2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import { Label } from '../ui/label';
@@ -7,6 +7,9 @@ import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
 import { Alert, AlertDescription } from '../ui/alert';
 import type { Language } from '../../App';
+import { useAuthStore } from '../../stores/useAuthStore';
+import { sitterService } from '../../services/sitter';
+import { toast } from 'sonner';
 
 const translations = {
   ar: {
@@ -41,6 +44,8 @@ const translations = {
     note: 'ملحوظة',
     noteText: 'عملية المراجعة تستغرق من 24-48 ساعة',
     cannotAcceptRequests: 'لا يمكنك قبول طلبات حتى يتم توثيق حسابك',
+    alreadyUploaded: 'تم الرفع',
+    fileSelected: 'تم اختيار الملف'
   },
   en: {
     back: 'Back',
@@ -74,6 +79,8 @@ const translations = {
     note: 'Note',
     noteText: 'Review process takes 24-48 hours',
     cannotAcceptRequests: 'You cannot accept requests until your account is verified',
+    alreadyUploaded: 'Already Uploaded',
+    fileSelected: 'File Selected'
   }
 };
 
@@ -83,13 +90,70 @@ interface SitterVerificationProps {
 }
 
 export default function SitterVerification({ language, onBack }: SitterVerificationProps) {
+  const { user } = useAuthStore();
   const [policeRecordFile, setPoliceRecordFile] = useState<File | null>(null);
   const [nationalIdFrontFile, setNationalIdFrontFile] = useState<File | null>(null);
   const [nationalIdBackFile, setNationalIdBackFile] = useState<File | null>(null);
+
+  // Track existing uploads from DB
+  const [existingDocs, setExistingDocs] = useState<{
+    policeRecord?: string;
+    nationalIdFront?: string;
+    nationalIdBack?: string;
+  }>({});
+
   const [verificationStatus, setVerificationStatus] = useState<'not_submitted' | 'pending' | 'approved' | 'rejected'>('not_submitted');
   const [rejectionReason, setRejectionReason] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const t = translations[language];
+
+  useEffect(() => {
+    if (user?.id) {
+      loadVerificationRequests();
+    }
+  }, [user?.id]);
+
+  const loadVerificationRequests = async () => {
+    try {
+      if (!user?.id) return;
+      setIsLoading(true);
+      const requests = await sitterService.getVerificationRequests(user.id);
+
+      const newExistingDocs: typeof existingDocs = {};
+      let maxStatus = 'not_submitted';
+
+      requests.forEach(req => {
+        if (req.document_type === 'police_record') newExistingDocs.policeRecord = req.document_url;
+        if (req.document_type === 'national_id_front') newExistingDocs.nationalIdFront = req.document_url;
+        if (req.document_type === 'national_id_back') newExistingDocs.nationalIdBack = req.document_url;
+
+        // Simple status logic: if any rejected -> rejected, else if any pending -> pending, else approved
+        if (req.status === 'rejected') {
+          maxStatus = 'rejected';
+          // Would need to store rejection reason somewhere in DB if we want to show it
+        } else if (req.status === 'pending' && maxStatus !== 'rejected') {
+          maxStatus = 'pending';
+        } else if (req.status === 'approved' && maxStatus !== 'rejected' && maxStatus !== 'pending') {
+          maxStatus = 'approved';
+        }
+      });
+
+      setExistingDocs(newExistingDocs);
+      // If we have at least one doc and it's pending/approved, reflect that. 
+      // If no docs, it stays not_submitted.
+      if (requests.length > 0) {
+        setVerificationStatus(maxStatus as any);
+      }
+
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to load verification status');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handlePoliceRecordUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -109,21 +173,51 @@ export default function SitterVerification({ language, onBack }: SitterVerificat
     }
   };
 
-  const handleSubmit = () => {
-    if (!policeRecordFile || !nationalIdFrontFile || !nationalIdBackFile) {
-      alert(language === 'ar' ? 'يرجى رفع جميع المستندات المطلوبة' : 'Please upload all required documents');
+  const handleSubmit = async () => {
+    // Check if we have files OR existing urls for all 3 required docs
+    const hasPoliceRecord = policeRecordFile || existingDocs.policeRecord;
+    const hasFrontId = nationalIdFrontFile || existingDocs.nationalIdFront;
+    const hasBackId = nationalIdBackFile || existingDocs.nationalIdBack;
+
+    if (!hasPoliceRecord || !hasFrontId || !hasBackId) {
+      toast.error(language === 'ar' ? 'يرجى رفع جميع المستندات المطلوبة' : 'Please upload all required documents');
       return;
     }
 
-    // In real app, this would upload to backend
-    console.log('Submitting verification:', {
-      policeRecord: policeRecordFile,
-      nationalIdFront: nationalIdFrontFile,
-      nationalIdBack: nationalIdBackFile
-    });
+    try {
+      if (!user?.id) return;
+      setIsSubmitting(true);
 
-    setVerificationStatus('pending');
-    alert(language === 'ar' ? 'تم إرسال طلب التوثيق بنجاح' : 'Verification request submitted successfully');
+      // Upload files if new ones selected
+      if (policeRecordFile) {
+        const url = await sitterService.uploadVerificationDocument(user.id, policeRecordFile, 'police_record');
+        await sitterService.submitVerificationRequest(user.id, 'police_record', url);
+        setExistingDocs(prev => ({ ...prev, policeRecord: url }));
+        setPoliceRecordFile(null); // Clear file selection
+      }
+
+      if (nationalIdFrontFile) {
+        const url = await sitterService.uploadVerificationDocument(user.id, nationalIdFrontFile, 'national_id_front');
+        await sitterService.submitVerificationRequest(user.id, 'national_id_front', url);
+        setExistingDocs(prev => ({ ...prev, nationalIdFront: url }));
+        setNationalIdFrontFile(null);
+      }
+
+      if (nationalIdBackFile) {
+        const url = await sitterService.uploadVerificationDocument(user.id, nationalIdBackFile, 'national_id_back');
+        await sitterService.submitVerificationRequest(user.id, 'national_id_back', url);
+        setExistingDocs(prev => ({ ...prev, nationalIdBack: url }));
+        setNationalIdBackFile(null);
+      }
+
+      setVerificationStatus('pending');
+      toast.success(language === 'ar' ? 'تم إرسال طلب التوثيق بنجاح' : 'Verification request submitted successfully');
+    } catch (error) {
+      console.error(error);
+      toast.error(language === 'ar' ? 'حدث خطأ أثناء الرفع' : 'Error uploading documents');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const getStatusBadge = () => {
@@ -139,7 +233,63 @@ export default function SitterVerification({ language, onBack }: SitterVerificat
     }
   };
 
-  const isDocumentsComplete = policeRecordFile && nationalIdFrontFile && nationalIdBackFile;
+  // Helper to render upload state
+  const renderUploadState = (
+    file: File | null,
+    existingUrl: string | undefined,
+    label: string,
+    id: string,
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => void
+  ) => {
+    if (file) {
+      // New file selected
+      return (
+        <div className="space-y-3">
+          <FileText className="size-10 mx-auto text-blue-500" />
+          <div>
+            <p className="text-xs">{file.name}</p>
+            <p className="text-xs text-gray-500">{(file.size / 1024).toFixed(2)} KB</p>
+          </div>
+          <Label htmlFor={id} className="cursor-pointer">
+            <Button variant="outline" size="sm" asChild>
+              <span>{t.changeDocument}</span>
+            </Button>
+          </Label>
+        </div>
+      );
+    } else if (existingUrl) {
+      // Already uploaded
+      return (
+        <div className="space-y-3">
+          <Check className="size-10 mx-auto text-green-500" />
+          <div>
+            <p className="text-sm font-medium text-green-600">{t.alreadyUploaded}</p>
+          </div>
+          <Label htmlFor={id} className="cursor-pointer">
+            <Button variant="outline" size="sm" asChild>
+              <span>{t.changeDocument}</span>
+            </Button>
+          </Label>
+        </div>
+      );
+    } else {
+      // Nothing selected
+      return (
+        <div className="space-y-3">
+          <Upload className="size-10 mx-auto text-gray-400" />
+          <Label htmlFor={id} className="cursor-pointer">
+            <Button variant="outline" size="sm" asChild>
+              <span>{label}</span>
+            </Button>
+          </Label>
+        </div>
+      );
+    }
+  };
+
+  const isDocumentsComplete = (policeRecordFile || existingDocs.policeRecord) &&
+    (nationalIdFrontFile || existingDocs.nationalIdFront) &&
+    (nationalIdBackFile || existingDocs.nationalIdBack);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -252,47 +402,18 @@ export default function SitterVerification({ language, onBack }: SitterVerificat
                 <h2 className="text-lg">{t.policeRecord}</h2>
                 <p className="text-sm text-gray-600 dark:text-gray-400">{t.policeRecordDesc}</p>
               </div>
-              {policeRecordFile && <Check className="size-6 text-green-500" />}
+              {(policeRecordFile || existingDocs.policeRecord) && <Check className="size-6 text-green-500" />}
             </div>
 
             <div className="border-2 border-dashed rounded-lg p-6 text-center">
-              {policeRecordFile ? (
-                <div className="space-y-3">
-                  <FileText className="size-12 mx-auto text-green-500" />
-                  <div>
-                    <p className="text-sm">{policeRecordFile.name}</p>
-                    <p className="text-xs text-gray-500">{(policeRecordFile.size / 1024).toFixed(2)} KB</p>
-                  </div>
-                  <Label htmlFor="police-record-change" className="cursor-pointer">
-                    <Button variant="outline" size="sm" asChild>
-                      <span>{t.changeDocument}</span>
-                    </Button>
-                  </Label>
-                  <Input
-                    id="police-record-change"
-                    type="file"
-                    accept="image/*,application/pdf"
-                    onChange={handlePoliceRecordUpload}
-                    className="hidden"
-                  />
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <Upload className="size-12 mx-auto text-gray-400" />
-                  <Label htmlFor="police-record-upload" className="cursor-pointer">
-                    <Button variant="outline" asChild>
-                      <span>{t.uploadDocument}</span>
-                    </Button>
-                  </Label>
-                  <Input
-                    id="police-record-upload"
-                    type="file"
-                    accept="image/*,application/pdf"
-                    onChange={handlePoliceRecordUpload}
-                    className="hidden"
-                  />
-                </div>
-              )}
+              {renderUploadState(policeRecordFile, existingDocs.policeRecord, t.uploadDocument, 'police-record-upload', handlePoliceRecordUpload)}
+              <Input
+                id="police-record-upload"
+                type="file"
+                accept="image/*,application/pdf"
+                onChange={handlePoliceRecordUpload}
+                className="hidden"
+              />
             </div>
           </div>
         </Card>
@@ -308,90 +429,32 @@ export default function SitterVerification({ language, onBack }: SitterVerificat
                 <h2 className="text-lg">{t.nationalId}</h2>
                 <p className="text-sm text-gray-600 dark:text-gray-400">{t.nationalIdDesc}</p>
               </div>
-              {nationalIdFrontFile && nationalIdBackFile && <Check className="size-6 text-green-500" />}
+              {(nationalIdFrontFile || existingDocs.nationalIdFront) && (nationalIdBackFile || existingDocs.nationalIdBack) && <Check className="size-6 text-green-500" />}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Front Side */}
               <div className="border-2 border-dashed rounded-lg p-4 text-center">
-                {nationalIdFrontFile ? (
-                  <div className="space-y-3">
-                    <FileText className="size-10 mx-auto text-green-500" />
-                    <div>
-                      <p className="text-xs">{nationalIdFrontFile.name}</p>
-                      <p className="text-xs text-gray-500">{(nationalIdFrontFile.size / 1024).toFixed(2)} KB</p>
-                    </div>
-                    <Label htmlFor="national-id-front-change" className="cursor-pointer">
-                      <Button variant="outline" size="sm" asChild>
-                        <span>{t.changeDocument}</span>
-                      </Button>
-                    </Label>
-                    <Input
-                      id="national-id-front-change"
-                      type="file"
-                      accept="image/*"
-                      onChange={handleNationalIdFrontUpload}
-                      className="hidden"
-                    />
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <Upload className="size-10 mx-auto text-gray-400" />
-                    <Label htmlFor="national-id-front-upload" className="cursor-pointer">
-                      <Button variant="outline" size="sm" asChild>
-                        <span>{t.uploadFront}</span>
-                      </Button>
-                    </Label>
-                    <Input
-                      id="national-id-front-upload"
-                      type="file"
-                      accept="image/*"
-                      onChange={handleNationalIdFrontUpload}
-                      className="hidden"
-                    />
-                  </div>
-                )}
+                {renderUploadState(nationalIdFrontFile, existingDocs.nationalIdFront, t.uploadFront, 'national-id-front', handleNationalIdFrontUpload)}
+                <Input
+                  id="national-id-front"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleNationalIdFrontUpload}
+                  className="hidden"
+                />
               </div>
 
               {/* Back Side */}
               <div className="border-2 border-dashed rounded-lg p-4 text-center">
-                {nationalIdBackFile ? (
-                  <div className="space-y-3">
-                    <FileText className="size-10 mx-auto text-green-500" />
-                    <div>
-                      <p className="text-xs">{nationalIdBackFile.name}</p>
-                      <p className="text-xs text-gray-500">{(nationalIdBackFile.size / 1024).toFixed(2)} KB</p>
-                    </div>
-                    <Label htmlFor="national-id-back-change" className="cursor-pointer">
-                      <Button variant="outline" size="sm" asChild>
-                        <span>{t.changeDocument}</span>
-                      </Button>
-                    </Label>
-                    <Input
-                      id="national-id-back-change"
-                      type="file"
-                      accept="image/*"
-                      onChange={handleNationalIdBackUpload}
-                      className="hidden"
-                    />
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <Upload className="size-10 mx-auto text-gray-400" />
-                    <Label htmlFor="national-id-back-upload" className="cursor-pointer">
-                      <Button variant="outline" size="sm" asChild>
-                        <span>{t.uploadBack}</span>
-                      </Button>
-                    </Label>
-                    <Input
-                      id="national-id-back-upload"
-                      type="file"
-                      accept="image/*"
-                      onChange={handleNationalIdBackUpload}
-                      className="hidden"
-                    />
-                  </div>
-                )}
+                {renderUploadState(nationalIdBackFile, existingDocs.nationalIdBack, t.uploadBack, 'national-id-back', handleNationalIdBackUpload)}
+                <Input
+                  id="national-id-back"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleNationalIdBackUpload}
+                  className="hidden"
+                />
               </div>
             </div>
           </div>
@@ -401,11 +464,18 @@ export default function SitterVerification({ language, onBack }: SitterVerificat
         {verificationStatus !== 'approved' && (
           <Button
             onClick={handleSubmit}
-            disabled={!isDocumentsComplete || verificationStatus === 'pending'}
+            disabled={!isDocumentsComplete || isSubmitting || (verificationStatus === 'pending' && !policeRecordFile && !nationalIdFrontFile && !nationalIdBackFile)}
             className="w-full bg-[#FB5E7A] hover:bg-[#e5536e] disabled:opacity-50"
             size="lg"
           >
-            {verificationStatus === 'rejected' ? t.resubmit : t.submit}
+            {isSubmitting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                {t.verificationPending}
+              </>
+            ) : (
+              verificationStatus === 'rejected' ? t.resubmit : t.submit
+            )}
           </Button>
         )}
       </div>

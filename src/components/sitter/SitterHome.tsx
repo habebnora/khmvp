@@ -1,446 +1,576 @@
-import { TrendingUp, Calendar, Star, DollarSign, Clock, Check, X, Settings, FileText, Bell, Eye } from 'lucide-react';
-import { useState } from 'react';
+import { TrendingUp, Calendar, Star, Clock, Bell, Loader2, Settings, ShieldCheck, Eye, Wallet } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
-import { ScrollArea } from '../ui/scroll-area';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
 import AvailabilityManagement from './AvailabilityManagement';
 import ServicesManagement from './ServicesManagement';
 import SitterVerification from './SitterVerification';
 import BookingRequests from './BookingRequests';
 import RequestDetails from './RequestDetails';
 import type { Language } from '../../App';
+import { useAuthStore } from '../../stores/useAuthStore';
+import { bookingService, type Booking } from '../../services/booking';
+import { sitterService } from '../../services/sitter';
+import { notificationService, type Notification } from '../../services/notification';
+import { toast } from 'sonner';
+import { supabase } from '../../lib/supabase';
+import type { BookingRequest } from './RequestDetails';
+
+const mapBookingToRequest = (booking: Booking): BookingRequest => ({
+  id: booking.id,
+  clientName: booking.client?.full_name || '---',
+  clientImage: booking.client?.avatar_url || '',
+  date: booking.date,
+  time: booking.start_time,
+  duration: booking.duration_hours,
+  location: booking.location,
+  type: booking.booking_type,
+  price: booking.total_price,
+  children: (booking as any).children_count || 1,
+  status: booking.status,
+  notes: (booking as any).notes
+});
 
 interface SitterHomeProps {
   language: Language;
 }
 
-interface BookingRequest {
-  id: number;
-  clientName: string;
-  clientImage: string;
-  date: string;
-  time: string;
-  duration: number;
-  location: string;
-  type: 'home' | 'outside';
-  price: number;
-  children: number;
-  notes?: string;
-}
-
 const translations = {
   ar: {
-    welcome: 'مرحباً',
-    dashboard: 'لوحة التحكم',
-    thisMonth: 'هذا الشهر',
+    dashboard: 'لوحة التحكم الخاصة بك اليوم',
     totalEarnings: 'إجمالي الأرباح',
-    completedJobs: 'جلسات مكتملة',
-    rating: 'التقييم',
-    totalHours: 'إجمالي ساعات العمل',
-    upcomingBookings: 'الحجوزات القادمة',
+    completedJobs: 'الجلسات المكتملة',
+    totalHours: 'إجمالي الساعات',
+    rating: 'التقييم العام',
     newRequests: 'طلبات جديدة',
-    noRequests: 'لا توجد طلبات جديدة',
-    accept: 'قبول',
-    decline: 'رفض',
-    children: 'طفل',
-    hours: 'ساعات',
+    noRequests: 'لا توجد طلبات جديدة حالياً',
+    viewDetails: 'عرض التفاصيل',
+    manageSchedule: 'إدارة الجدول',
+    manageServices: 'إدارة الخدمات',
+    verificationStatus: 'حالة التوثيق',
     egp: 'جنيه',
+    hours: 'ساعة',
+    children: 'أطفال',
     atHome: 'في المنزل',
     outside: 'خارج المنزل',
-    viewAll: 'عرض الكل',
-    availability: 'الأوقات المتاحة',
-    available: 'متاحة',
-    unavailable: 'غير متاحة',
-    toggleAvailability: 'تغيير الحالة',
-    manageSchedule: 'إدارة المواعيد',
-    scheduleDesc: 'حددي الأيام والأوقات المتاحة للعمل',
-    notifications: 'الإشعارات',
-    noNotifications: 'لا توجد إشعارات',
-    newBookingRequest: 'طلب حجز جديد',
-    bookingConfirmed: 'تم تأكيد الحجز',
-    bookingCancelled: 'تم إلغاء الحجز',
-    newReview: 'تقييم جديد',
-    minutesAgo: 'منذ {time} دقيقة',
-    hoursAgo: 'منذ {time} ساعة',
-    daysAgo: 'منذ {time} يوم',
-    markAllRead: 'تعيين الكل كمقروء',
-    viewDetails: 'عرض التفاصيل'
   },
   en: {
-    welcome: 'Welcome',
-    dashboard: 'Dashboard',
-    thisMonth: 'This Month',
+    dashboard: 'Your sitter dashboard at a glance',
     totalEarnings: 'Total Earnings',
     completedJobs: 'Completed Jobs',
-    rating: 'Rating',
-    totalHours: 'Total Hours Worked',
-    upcomingBookings: 'Upcoming Bookings',
+    totalHours: 'Total Hours',
+    rating: 'Overall Rating',
     newRequests: 'New Requests',
-    noRequests: 'No new requests',
-    accept: 'Accept',
-    decline: 'Decline',
-    children: 'child',
-    hours: 'hours',
+    noRequests: 'No new requests at the moment',
+    viewDetails: 'View Details',
+    manageSchedule: 'Manage Schedule',
+    manageServices: 'Manage Services',
+    verificationStatus: 'Verification Status',
     egp: 'EGP',
+    hours: 'hrs',
+    children: 'children',
     atHome: 'At Home',
     outside: 'Outside',
-    viewAll: 'View All',
-    availability: 'Availability',
-    available: 'Available',
-    unavailable: 'Unavailable',
-    toggleAvailability: 'Change Status',
-    manageSchedule: 'Manage Schedule',
-    scheduleDesc: 'Set your available days and times',
-    notifications: 'Notifications',
-    noNotifications: 'No notifications',
-    newBookingRequest: 'New booking request',
-    bookingConfirmed: 'Booking confirmed',
-    bookingCancelled: 'Booking cancelled',
-    newReview: 'New review',
-    minutesAgo: '{time} minutes ago',
-    hoursAgo: '{time} hours ago',
-    daysAgo: '{time} days ago',
-    markAllRead: 'Mark all as read',
-    viewDetails: 'View Details'
   }
 };
 
 export default function SitterHome({ language }: SitterHomeProps) {
   const t = translations[language];
-  const [isAvailable, setIsAvailable] = useState(true);
+  const { user } = useAuthStore();
+  const [loading, setLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
+  const [stats, setStats] = useState({
+    totalEarnings: 0,
+    completedJobs: 0,
+    totalHours: 0,
+    rating: 0,
+    ratingCount: 0
+  });
+
+  const [pendingRequests, setPendingRequests] = useState<Booking[]>([]);
   const [showAvailabilityManagement, setShowAvailabilityManagement] = useState(false);
   const [showServicesManagement, setShowServicesManagement] = useState(false);
   const [showSitterVerification, setShowSitterVerification] = useState(false);
   const [showBookingRequests, setShowBookingRequests] = useState(false);
-  const [selectedRequest, setSelectedRequest] = useState<BookingRequest | null>(null);
+  const [selectedRequest, setSelectedRequest] = useState<Booking | null>(null);
+  const [profile, setProfile] = useState<any>(null);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
-  // Mock notifications
-  const mockNotifications = [
-    {
-      id: 1,
-      type: 'booking',
-      title: language === 'ar' ? 'طلب حجز جديد' : 'New booking request',
-      message: language === 'ar' ? 'لديك طلب حجز جديد من أمل محمود' : 'You have a new booking request from Amal Mahmoud',
-      time: language === 'ar' ? 'منذ 5 دقائق' : '5 minutes ago',
-      read: false,
-      image: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400'
-    },
-    {
-      id: 2,
-      type: 'confirmed',
-      title: language === 'ar' ? 'تم تأكيد الحجز' : 'Booking confirmed',
-      message: language === 'ar' ? 'تم تأكيد حجزك مع سارة أحمد' : 'Your booking with Sarah Ahmed is confirmed',
-      time: language === 'ar' ? 'منذ ساعة' : '1 hour ago',
-      read: false,
-      image: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400'
-    },
-    {
-      id: 3,
-      type: 'review',
-      title: language === 'ar' ? 'تقييم جديد' : 'New review',
-      message: language === 'ar' ? 'حصلتِ على تقييم 5 نجوم من منى حسن' : 'You received a 5-star review from Mona Hassan',
-      time: language === 'ar' ? 'منذ يومين' : '2 days ago',
-      read: true,
-      image: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400'
+  // Withdrawal State
+  const [showWithdrawalDialog, setShowWithdrawalDialog] = useState(false);
+  const [withdrawalAmount, setWithdrawalAmount] = useState('');
+  const [nationalIdConfirm, setNationalIdConfirm] = useState('');
+
+  const handleWithdrawalSubmit = () => {
+    if (!withdrawalAmount || !nationalIdConfirm) {
+      toast.error(language === 'ar' ? 'يرجى ملء جميع الحقول' : 'Please fill all fields');
+      return;
     }
-  ];
-
-  const mockRequests: BookingRequest[] = [
-  {
-    id: 1,
-    clientName: language === 'ar' ? 'أمل محمود' : 'Amal Mahmoud',
-    clientImage: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400',
-    date: '2024-11-26',
-    time: '14:00',
-    duration: 3,
-    location: language === 'ar' ? 'المنيا الجديدة' : 'New Minya',
-    type: 'home',
-    price: 240,
-    children: 2,
-    notes: language === 'ar' ? 'الأطفال لديهم حساسية من الفول السوداني' : 'Children have peanut allergy'
-  },
-  {
-    id: 2,
-    clientName: language === 'ar' ? 'هدى سعيد' : 'Hoda Said',
-    clientImage: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400',
-    date: '2024-11-27',
-    time: '10:00',
-    duration: 2,
-    location: language === 'ar' ? 'المنيا' : 'Minya',
-    type: 'outside',
-    price: 160,
-    children: 1
-  }
-];
-
-  const handleAccept = (id: number) => {
-    alert(language === 'ar' ? 'تم قبول الطلب!' : 'Request accepted!');
+    // Mock API call
+    toast.success(language === 'ar' ? 'تم استلام طلب السحب بنجاح' : 'Withdrawal request received successfully');
+    setShowWithdrawalDialog(false);
+    setWithdrawalAmount('');
+    setNationalIdConfirm('');
   };
 
-  const handleDecline = (id: number) => {
-    alert(language === 'ar' ? 'تم رفض الطلب' : 'Request declined');
+  const loadProfile = async () => {
+    try {
+      if (!user?.id) return;
+      const profileData = await sitterService.getProfile(user.id);
+      setProfile(profileData);
+    } catch (error) {
+      console.error('Error loading profile:', error);
+    }
+  };
+
+  const loadNotifications = async () => {
+    try {
+      if (!user?.id) return;
+      const data = await notificationService.getRecentNotifications(user.id);
+      setNotifications(data);
+    } catch (error) {
+      console.error('Error loading notifications:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (user?.id) {
+      loadData();
+      loadProfile();
+      loadNotifications();
+
+      // Subscribe to realtime notifications
+      const notificationChannel = supabase
+        .channel('sitter-notifications')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'notifications',
+            filter: `user_id=eq.${user.id}`
+          },
+          (payload) => {
+            const newNotification = payload.new as Notification;
+            setNotifications(prev => [newNotification, ...prev]);
+          }
+        )
+        .subscribe();
+
+      // Subscribe to realtime bookings
+      const bookingChannel = supabase
+        .channel('sitter-bookings')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'bookings',
+            filter: `sitter_id=eq.${user.id}`
+          },
+          () => {
+            loadData();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(notificationChannel);
+        supabase.removeChannel(bookingChannel);
+      };
+    }
+  }, [user?.id]);
+
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      setHasError(false);
+      if (!user?.id) return;
+
+      const [bookings, statsData] = await Promise.all([
+        bookingService.getSitterBookings(user.id),
+        sitterService.getStats(user.id)
+      ]);
+
+      setStats({
+        totalEarnings: Number(statsData.total_earnings || 0),
+        completedJobs: Number(statsData.completed_jobs || 0),
+        totalHours: Number(statsData.total_hours || 0),
+        rating: Number(statsData.average_rating || 0),
+        ratingCount: Number(statsData.review_count || 0)
+      });
+
+      setPendingRequests(bookings.filter((b: any) => b.status === 'pending'));
+
+    } catch (error) {
+      console.error('Error loading sitter home data:', error);
+      setHasError(true);
+      toast.error(language === 'ar' ? 'حدث خطأ في تحميل البيانات' : 'Error loading dashboard data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAccept = async (request: Booking) => {
+    try {
+      await bookingService.updateStatus(request.id, 'waiting_payment');
+
+      // Send notification to client
+      await notificationService.createNotification({
+        user_id: request.client_id,
+        type: 'booking_accepted',
+        title: language === 'ar' ? 'تم قبول طلبك' : 'Booking Accepted',
+        message: language === 'ar'
+          ? `تم قبول طلبك من أختك ${profile?.full_name || 'الخالة'}. يرجى إتمام عملية الدفع.`
+          : `Your booking has been accepted by ${profile?.full_name || 'the sitter'}. Please complete the payment.`,
+        data: { booking_id: request.id }
+      });
+
+      toast.success(language === 'ar' ? 'تم قبول الطلب وبانتظار الدفع' : 'Request accepted, waiting for payment');
+      loadData();
+    } catch (error) {
+      console.error('Error accepting booking:', error);
+      toast.error(language === 'ar' ? 'حدث خطأ' : 'Error updating status');
+    }
+  };
+
+  const handleDecline = async (request: Booking) => {
+    try {
+      await bookingService.updateStatus(request.id, 'cancelled');
+
+      // Send notification to client
+      await notificationService.createNotification({
+        user_id: request.client_id,
+        type: 'booking_declined',
+        title: language === 'ar' ? 'تم رفض الطلب' : 'Booking Declined',
+        message: language === 'ar'
+          ? `نعتذر، تم اعتذار أختك ${profile?.full_name || 'الخالة'} عن قبول الطلب.`
+          : `Sorry, ${profile?.full_name || 'the sitter'} has declined your booking request.`,
+        data: { booking_id: request.id }
+      });
+
+      toast.success(language === 'ar' ? 'تم رفض الطلب' : 'Request declined');
+      loadData();
+    } catch (error) {
+      console.error('Error declining booking:', error);
+      toast.error(language === 'ar' ? 'حدث خطأ' : 'Error updating status');
+    }
   };
 
   if (showAvailabilityManagement) {
-    return (
-      <AvailabilityManagement 
-        language={language} 
-        onBack={() => setShowAvailabilityManagement(false)} 
-      />
-    );
+    return <AvailabilityManagement language={language} onBack={() => setShowAvailabilityManagement(false)} />;
   }
 
   if (showServicesManagement) {
-    return (
-      <ServicesManagement 
-        language={language} 
-        onBack={() => setShowServicesManagement(false)} 
-      />
-    );
+    return <ServicesManagement language={language} onBack={() => setShowServicesManagement(false)} />;
   }
 
   if (showSitterVerification) {
-    return (
-      <SitterVerification 
-        language={language} 
-        onBack={() => setShowSitterVerification(false)} 
-      />
-    );
+    return <SitterVerification language={language} onBack={() => setShowSitterVerification(false)} />;
   }
 
   if (showBookingRequests) {
-    return (
-      <BookingRequests 
-        language={language} 
-        onBack={() => setShowBookingRequests(false)} 
-      />
-    );
+    return <BookingRequests language={language} onBack={() => setShowBookingRequests(false)} isVerified={true} />;
   }
 
-  if (selectedRequest) {
-    return (
-      <RequestDetails
-        language={language}
-        request={selectedRequest}
-        onBack={() => setSelectedRequest(null)}
-        onAccept={() => {
-            handleAccept(selectedRequest.id);
-            setSelectedRequest(null);
-        }}
-        onDecline={() => {
-            handleDecline(selectedRequest.id);
-            setSelectedRequest(null);
-        }}
-      />
-    );
-  }
+  // Removed early return to use Dialog instead
 
   return (
-    <div className="max-w-4xl mx-auto px-4 pb-8 pt-4">
-      {/* Header with Notifications */}
-      <div className="mb-6">
-        <div className="flex items-start justify-between mb-4">
-          <div>
-            <h1 className="text-[#FB5E7A] mb-2">
-              {t.welcome}, {language === 'ar' ? 'فاطمة' : 'Fatima'}! 👋
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400">{t.dashboard}</p>
-          </div>
-
-          {/* Notification Bell - Top Right (Left in RTL) */}
-          <Popover>
-            <PopoverTrigger asChild>
-              <button className="relative w-12 h-12 rounded-full bg-[#FB5E7A]/10 flex items-center justify-center hover:bg-[#FB5E7A]/20 transition-colors">
-                <Bell className="w-6 h-6 text-[#FB5E7A]" />
-                {/* Notification Badge */}
-                {mockNotifications.filter(n => !n.read).length > 0 && (
-                  <span className="absolute top-0 right-0 w-5 h-5 bg-red-500 rounded-full text-white text-xs flex items-center justify-center">
-                    {mockNotifications.filter(n => !n.read).length}
-                  </span>
-                )}
-              </button>
-            </PopoverTrigger>
-            <PopoverContent className="w-80 p-0" align={language === 'ar' ? 'start' : 'end'}>
-              <div className="p-4 border-b">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-semibold">{t.notifications}</h3>
-                  <Button variant="ghost" size="sm" className="text-xs">
-                    {t.markAllRead}
-                  </Button>
-                </div>
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-20">
+      <div className="max-w-4xl mx-auto px-4 pt-0 pb-8">
+        {/* Sticky Header */}
+        <div className="sticky top-0 z-50 bg-gray-50 dark:bg-gray-900 pt-6 pb-4 -mx-4 px-4 mb-4 border-b border-gray-100 dark:border-gray-800">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <img
+                src={user?.user_metadata?.avatar_url || 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400'}
+                alt={user?.user_metadata?.full_name}
+                className="w-12 h-12 rounded-full border-2 border-[#FFD1DA] object-cover"
+              />
+              <div>
+                <h1 className="text-xl font-bold text-[#FB5E7A]">
+                  {language === 'ar' ? 'مرحباً، ' : 'Welcome, '}
+                  {profile?.full_name?.split(' ')[0] || 'Khala'}
+                </h1>
+                <p className="text-xs text-gray-500">{t.dashboard}</p>
               </div>
-              <ScrollArea className="h-96">
-                {mockNotifications.length === 0 ? (
-                  <div className="p-8 text-center text-gray-500">
-                    <Bell className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                    <p className="text-sm">{t.noNotifications}</p>
-                  </div>
-                ) : (
-                  <div className="divide-y">
-                    {mockNotifications.map((notification) => (
-                      <div 
-                        key={notification.id} 
-                        className={`p-4 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors ${
-                          !notification.read ? 'bg-[#FB5E7A]/5' : ''
-                        }`}
+            </div>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="icon" className="rounded-full relative w-10 h-10">
+                  <Bell className="w-5 h-5" />
+                  {notifications.filter(n => !n.is_read).length > 0 && (
+                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-[#FB5E7A] text-white text-[10px] rounded-full flex items-center justify-center border-2 border-white">
+                      {notifications.filter(n => !n.is_read).length}
+                    </span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80 p-0" align={language === 'ar' ? 'start' : 'end'}>
+                <div className="p-4 border-b">
+                  <h3 className="font-semibold text-[#FB5E7A]">
+                    {language === 'ar' ? 'الإشعارات' : 'Notifications'}
+                  </h3>
+                </div>
+                <div className="max-h-96 overflow-y-auto">
+                  {notifications.length === 0 ? (
+                    <div className="p-8 text-center text-gray-500">
+                      <Bell className="w-12 h-12 mx-auto mb-2 text-gray-400" />
+                      <p className="text-sm">{language === 'ar' ? 'لا توجد إشعارات' : 'No notifications'}</p>
+                    </div>
+                  ) : (
+                    notifications.slice(0, 5).map((notification) => (
+                      <div
+                        key={notification.id}
+                        className={`p-4 border-b hover:bg-gray-50 cursor-pointer ${!notification.is_read ? 'bg-[#FFD1DA]/10' : ''}`}
+                        onClick={async () => {
+                          // Mark as read
+                          if (!notification.is_read) {
+                            await notificationService.markAsRead(notification.id);
+                            setNotifications(prev => prev.map(n => n.id === notification.id ? { ...n, is_read: true } : n));
+                          }
+
+                          // Navigate to booking if it's a booking notification
+                          if (notification.type === 'new_booking' && notification.data?.booking_id) {
+                            try {
+                              const booking = await bookingService.getBooking(notification.data.booking_id);
+                              if (booking) {
+                                setSelectedRequest(booking);
+                                // Close popover if needed - but here it's fine
+                              }
+                            } catch (error) {
+                              console.error('Error loading booking:', error);
+                              // Fallback to searching in pendingRequests if already loaded
+                              const localBooking = pendingRequests.find(b => b.id === notification.data.booking_id);
+                              if (localBooking) {
+                                setSelectedRequest(localBooking);
+                              } else {
+                                toast.error(language === 'ar' ? 'حدث خطأ في تحميل الطلب' : 'Error loading request');
+                              }
+                            }
+                          }
+                        }}
                       >
-                        <div className="flex gap-3">
-                          <img
-                            src={notification.image}
-                            alt=""
-                            className="w-10 h-10 rounded-full object-cover"
-                          />
+                        <div className="flex items-start gap-3">
+                          <Bell className="w-4 h-4 text-[#FB5E7A] mt-1" />
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-start justify-between gap-2 mb-1">
-                              <p className="text-sm font-medium">{notification.title}</p>
-                              {!notification.read && (
-                                <div className="w-2 h-2 bg-[#FB5E7A] rounded-full flex-shrink-0 mt-1" />
-                              )}
-                            </div>
-                            <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">
-                              {notification.message}
+                            <p className="font-medium text-sm">
+                              {notification.type === 'new_booking' && language === 'ar'
+                                ? 'طلب حجز جديد'
+                                : notification.title}
                             </p>
-                            <p className="text-xs text-gray-500">{notification.time}</p>
+                            <p className="text-xs text-gray-600 mt-1">
+                              {notification.type === 'new_booking' && language === 'ar'
+                                ? `لديك طلب جديد من أختك ${notification.data?.client_name || ''}`
+                                : notification.message}
+                            </p>
+                            <p className="text-xs text-gray-400 mt-1">
+                              {new Date(notification.created_at).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US')}
+                            </p>
                           </div>
+                          {!notification.is_read && (
+                            <div className="w-2 h-2 bg-[#FB5E7A] rounded-full mt-2"></div>
+                          )}
                         </div>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </ScrollArea>
-            </PopoverContent>
-          </Popover>
+                    ))
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
         </div>
-      </div>
-
-      {/* Stats Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <Card className="p-4">
-          <div className="flex flex-col h-full justify-between">
-            <div className="flex justify-between items-start mb-2">
-              <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900 text-green-600">
-                <TrendingUp className="w-5 h-5" />
-              </div>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">{t.totalEarnings}</p>
-              <h2 className="text-[#FB5E7A] font-bold">3,240 {t.egp}</h2>
-            </div>
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+            <Loader2 className="w-12 h-12 animate-spin mb-4" />
+            <p>{language === 'ar' ? 'جاري التحميل...' : 'Loading...'}</p>
           </div>
-        </Card>
-
-        <Card className="p-4">
-          <div className="flex flex-col h-full justify-between">
-            <div className="flex justify-between items-start mb-2">
-              <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900 text-blue-600">
-                <Calendar className="w-5 h-5" />
-              </div>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">{t.completedJobs}</p>
-              <h2 className="text-[#FB5E7A] font-bold">24</h2>
-            </div>
+        ) : hasError ? (
+          <div className="text-center py-20">
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              {language === 'ar' ? 'فشل تحميل البيانات' : 'Failed to load data'}
+            </h3>
+            <Button onClick={loadData} variant="outline" className="mt-4">
+              {language === 'ar' ? 'إعادة المحاولة' : 'Retry'}
+            </Button>
           </div>
-        </Card>
-
-        <Card className="p-4">
-          <div className="flex flex-col h-full justify-between">
-            <div className="flex justify-between items-start mb-2">
-              <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900 text-purple-600">
-                <Clock className="w-5 h-5" />
-              </div>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">{t.totalHours}</p>
-              <h2 className="text-[#FB5E7A] font-bold">156</h2>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-4">
-          <div className="flex flex-col h-full justify-between">
-            <div className="flex justify-between items-start mb-2">
-              <div className="p-2 rounded-lg bg-yellow-100 dark:bg-yellow-900 text-yellow-600">
-                <Star className="w-5 h-5" />
-              </div>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">{t.rating}</p>
-              <h2 className="text-[#FB5E7A] font-bold flex items-center gap-1">
-                4.8 <span className="text-xs text-gray-500 font-normal">(124)</span>
-              </h2>
-            </div>
-          </div>
-        </Card>
-      </div>
-
-      {/* New Requests */}
-      <div className="mb-6">
-        <h3 className="mb-4">{t.newRequests}</h3>
-        {mockRequests.length === 0 ? (
-          <Card className="p-8 text-center text-gray-500">
-            {t.noRequests}
-          </Card>
         ) : (
-          <div className="space-y-4">
-            {mockRequests.map((request) => (
-              <Card key={request.id} className="p-4">
-                <div className="flex gap-4">
-                  <img
-                    src={request.clientImage}
-                    alt={request.clientName}
-                    className="w-16 h-16 rounded-full object-cover"
-                  />
-                  <div className="flex-1">
-                    <div className="flex items-start justify-between mb-2">
-                      <div>
-                        <h4 className="mb-1">{request.clientName}</h4>
-                        <Badge variant="outline">
-                          {request.children} {t.children}
-                        </Badge>
-                      </div>
-                      <Badge className={request.type === 'home' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}>
-                        {request.type === 'home' ? t.atHome : t.outside}
-                      </Badge>
-                    </div>
+          <div className="space-y-6">
 
-                    <div className="grid grid-cols-2 gap-2 text-sm text-gray-600 dark:text-gray-400 mb-3">
-                      <div className="flex items-center gap-1">
-                        <Calendar className="w-4 h-4" />
-                        <span>{request.date}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Clock className="w-4 h-4" />
-                        <span>{request.time}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Clock className="w-4 h-4" />
-                        <span>{request.duration} {t.hours}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <DollarSign className="w-4 h-4" />
-                        <span className="text-[#FB5E7A]">{request.price} {t.egp}</span>
-                      </div>
-                    </div>
+            {/* Quick Actions */}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <Button
+                variant="outline"
+                className="h-auto py-6 flex flex-col gap-2 border-dashed border-2 hover:border-[#FB5E7A] hover:bg-[#FB5E7A]/5"
+                onClick={() => setShowAvailabilityManagement(true)}
+              >
+                <Calendar className="w-6 h-6 text-[#FB5E7A]" />
+                <p className="text-sm font-bold">{t.manageSchedule}</p>
+              </Button>
+              <Button
+                variant="outline"
+                className="h-auto py-6 flex flex-col gap-2 border-dashed border-2 hover:border-[#FB5E7A] hover:bg-[#FB5E7A]/5"
+                onClick={() => setShowServicesManagement(true)}
+              >
+                <Settings className="w-6 h-6 text-[#FB5E7A]" />
+                <p className="text-sm font-bold">{t.manageServices}</p>
+              </Button>
+              <Button
+                variant="outline"
+                className="h-auto py-6 flex flex-col gap-2 border-dashed border-2 hover:border-[#FB5E7A] hover:bg-[#FB5E7A]/5 md:col-span-1 col-span-2"
+                onClick={() => setShowSitterVerification(true)}
+              >
+                <ShieldCheck className="w-6 h-6 text-[#FB5E7A]" />
+                <p className="text-sm font-bold">{t.verificationStatus}</p>
+              </Button>
+            </div>
 
-                    <div className="flex gap-2">
-                      <Button
-                        onClick={() => setSelectedRequest(request)}
-                        className="w-full bg-[#FB5E7A] hover:bg-[#e5536e]"
-                      >
-                        <Eye className="w-4 h-4 mr-2" />
-                        {t.viewDetails}
-                      </Button>
-                    </div>
+            {/* Stats Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Card className="p-4 relative overflow-hidden group">
+                <div className="flex flex-col gap-2">
+                  <div className="flex justify-between items-start">
+                    <div className="p-2 w-fit rounded-lg bg-green-100 text-green-600"><TrendingUp className="w-5 h-5" /></div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-100"
+                      onClick={() => setShowWithdrawalDialog(true)}
+                      title={language === 'ar' ? 'سحب الأموال' : 'Withdraw Funds'}
+                    >
+                      <Wallet className="w-4 h-4" />
+                    </Button>
                   </div>
+                  <p className="text-sm text-gray-500">{t.totalEarnings}</p>
+                  <h3 className="text-xl font-bold text-[#FB5E7A]">{stats.totalEarnings} {t.egp}</h3>
                 </div>
               </Card>
-            ))}
+              <Card className="p-4">
+                <div className="flex flex-col gap-2">
+                  <div className="p-2 w-fit rounded-lg bg-blue-100 text-blue-600"><Calendar className="w-5 h-5" /></div>
+                  <p className="text-sm text-gray-500">{t.completedJobs}</p>
+                  <h3 className="text-xl font-bold text-[#FB5E7A]">{stats.completedJobs}</h3>
+                </div>
+              </Card>
+              <Card className="p-4">
+                <div className="flex flex-col gap-2">
+                  <div className="p-2 w-fit rounded-lg bg-purple-100 text-purple-600"><Clock className="w-5 h-5" /></div>
+                  <p className="text-sm text-gray-500">{t.totalHours}</p>
+                  <h3 className="text-xl font-bold text-[#FB5E7A]">{stats.totalHours}</h3>
+                </div>
+              </Card>
+              <Card className="p-4">
+                <div className="flex flex-col gap-2">
+                  <div className="p-2 w-fit rounded-lg bg-yellow-100 text-yellow-600"><Star className="w-5 h-5" /></div>
+                  <p className="text-sm text-gray-500">{t.rating}</p>
+                  <h3 className="text-xl font-bold text-[#FB5E7A]">{stats.rating}</h3>
+                </div>
+              </Card>
+            </div>
+
+            {/* Withdrawal Dialog */}
+            <Dialog open={showWithdrawalDialog} onOpenChange={setShowWithdrawalDialog}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>{language === 'ar' ? 'طلب سحب رصيد' : 'Withdrawal Request'}</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label>{language === 'ar' ? 'المبلغ المطلوب (جنيه)' : 'Amount (EGP)'}</Label>
+                    <Input
+                      type="number"
+                      value={withdrawalAmount}
+                      onChange={(e) => setWithdrawalAmount(e.target.value)}
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{language === 'ar' ? 'الرقم القومي (للتأكيد)' : 'National ID (Confirmation)'}</Label>
+                    <Input
+                      value={nationalIdConfirm}
+                      onChange={(e) => setNationalIdConfirm(e.target.value)}
+                      placeholder={language === 'ar' ? 'أدخل الرقم القومي' : 'Enter National ID'}
+                    />
+                  </div>
+                  <div className="pt-2">
+                    <Button
+                      className="w-full bg-[#FB5E7A] hover:bg-[#e5536e]"
+                      onClick={handleWithdrawalSubmit}
+                    >
+                      {language === 'ar' ? 'إرسال الطلب' : 'Submit Request'}
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            {/* New Requests Section */}
+            <div>
+              <h3 className="mb-4 font-bold flex items-center gap-2">
+                <Bell className="w-5 h-5 text-[#FB5E7A]" />
+                {t.newRequests}
+              </h3>
+              {pendingRequests.length === 0 ? (
+                <Card className="p-8 text-center text-gray-500">{t.noRequests}</Card>
+              ) : (
+                <div className="space-y-4">
+                  {pendingRequests.map((request) => (
+                    <Card key={request.id} className="p-4">
+                      <div className="flex gap-4">
+                        <img src={request.client?.avatar_url || ''} className="w-16 h-16 rounded-full object-cover" />
+                        <div className="flex-1">
+                          <div className="flex justify-between items-start mb-2">
+                            <div>
+                              <h4 className="font-bold">{request.client?.full_name}</h4>
+                              <Badge variant="outline">1 {t.children}</Badge>
+                            </div>
+                            <Badge className="bg-[#FB5E7A]/10 text-[#FB5E7A] border-none">
+                              {request.booking_type === 'home' ? t.atHome : t.outside}
+                            </Badge>
+                          </div>
+                          <div className="grid grid-cols-2 gap-y-1 text-sm text-gray-500 mb-4">
+                            <span className="flex items-center gap-1"><Calendar className="w-4 h-4" /> {request.date}</span>
+                            <span className="flex items-center gap-1"><Clock className="w-4 h-4" /> {request.start_time}</span>
+                          </div>
+                          <Button onClick={() => setSelectedRequest(request)} className="w-full bg-[#FB5E7A]">
+                            <Eye className="w-4 h-4 mr-2" /> {t.viewDetails}
+                          </Button>
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
+
+      {/* Booking Details Dialog */}
+      {selectedRequest && (
+        <Dialog open={!!selectedRequest} onOpenChange={(open: boolean) => !open && setSelectedRequest(null)}>
+          <DialogContent className="max-w-4xl p-0 max-h-[90vh] overflow-y-auto">
+            <RequestDetails
+              request={mapBookingToRequest(selectedRequest as Booking)}
+              language={language}
+              onBack={() => setSelectedRequest(null)}
+              onAccept={(selectedRequest as Booking).status === 'pending' ? async () => {
+                await handleAccept(selectedRequest as Booking);
+                setSelectedRequest(null);
+              } : undefined}
+              onDecline={(selectedRequest as Booking).status === 'pending' ? async () => {
+                await handleDecline(selectedRequest as Booking);
+                setSelectedRequest(null);
+              } : undefined}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

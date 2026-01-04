@@ -7,6 +7,7 @@ import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
 import { Alert, AlertDescription } from '../ui/alert';
 import type { Language } from '../../App';
+import { monitoring } from '@/lib/monitoring';
 
 const translations = {
   ar: {
@@ -90,7 +91,7 @@ export default function ClientVerification({ language, onBack }: ClientVerificat
   const [nationalIdFrontFile, setNationalIdFrontFile] = useState<File | null>(null);
   const [nationalIdBackFile, setNationalIdBackFile] = useState<File | null>(null);
   const [verificationStatus, setVerificationStatus] = useState<'not_submitted' | 'pending' | 'approved' | 'rejected'>('not_submitted');
-  const [rejectionReason, setRejectionReason] = useState('');
+  const [rejectionReason] = useState('');
 
   const t = translations[language];
 
@@ -113,9 +114,8 @@ export default function ClientVerification({ language, onBack }: ClientVerificat
     }
 
     // In real app, this would upload to backend
-    console.log('Submitting verification:', {
-      nationalIdFront: nationalIdFrontFile,
-      nationalIdBack: nationalIdBackFile
+    monitoring.logUserAction('submit_verification', {
+      filesCount: (nationalIdFrontFile ? 1 : 0) + (nationalIdBackFile ? 1 : 0)
     });
 
     setVerificationStatus('pending');

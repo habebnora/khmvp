@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Calendar, Clock, MapPin, Star, X, CreditCard, MessageCircle, QrCode, CheckCircle, Mic, StopCircle, Play } from 'lucide-react';
+import { Calendar, Clock, MapPin, Star, X, CreditCard, MessageCircle, QrCode, CheckCircle, Mic, StopCircle } from 'lucide-react';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -7,16 +7,21 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
+import { bookingService } from '../../services/booking';
+import { reviewService } from '../../services/review';
+import { useAuthStore } from '../../stores/useAuthStore';
 import PaymentPage from './PaymentPage';
 import ChatPage from './ChatPage';
-import type { Language } from '../../App';
+import { toast } from 'sonner';
+import { useTranslation } from '../../hooks/useTranslation';
+import { supabase } from '../../lib/supabase';
 
 interface ClientBookingsProps {
-  language: Language;
 }
 
 interface Booking {
-  id: number;
+  id: string; // Updated to string for UUID
+  sitterId: string;
   sitterName: string;
   sitterImage: string;
   date: string;
@@ -29,154 +34,13 @@ interface Booking {
   rating?: number;
 }
 
-const translations = {
-  ar: {
-    requests: 'الطلبات',
-    pending: 'قيد التأكيد',
-    waitingPayment: 'بانتظار الدفع',
-    upcoming: 'القادمة',
-    completed: 'مكتملة',
-    cancelled: 'ملغاة',
-    date: 'التاريخ',
-    time: 'الوقت',
-    duration: 'المدة',
-    hours: 'ساعات',
-    atHome: 'في المنزل',
-    outside: 'خارج المنزل',
-    total: 'الإجمالي',
-    egp: 'جنيه',
-    cancel: 'إلغاء',
-    payNow: 'ادفع الآن',
-    rateService: 'تقييم الخدمة',
-    noRequests: 'لا توجد طلبات في هذه القائمة',
-    rating: 'التقييم',
-    writeReview: 'اكتبي تقييمك',
-    submit: 'إرسال',
-    cancelBooking: 'إلغاء الطلب',
-    cancelConfirm: 'هل أنت متأكدة من إلغاء الطلب؟',
-    yes: 'نعم',
-    no: 'لا',
-    bookingCancelled: 'تم إلغاء الطلب بنجاح',
-    chat: 'محادثة',
-    scanQR: 'مسح الكود',
-    scanTitle: 'تأكيد هوية الخالة',
-    scanDesc: 'وجهي الكاميرا نحو كود QR الخاص بالخالة لتأكيد بدء الخدمة',
-    simulateScan: 'محاكاة المسح (تجريبي)',
-    scanSuccess: 'تم تأكيد الهوية وبدء الخدمة بنجاح!',
-    ongoing: 'جاري',
-    recordVoice: 'تسجيل صوتي',
-    startRecording: 'بدء التسجيل',
-    stopRecording: 'إيقاف التسجيل',
-    voiceMessage: 'رسالة صوتية',
-    or: 'أو',
-  },
-  en: {
-    requests: 'Requests',
-    pending: 'Pending',
-    waitingPayment: 'Waiting Payment',
-    upcoming: 'Upcoming',
-    completed: 'Completed',
-    cancelled: 'Cancelled',
-    date: 'Date',
-    time: 'Time',
-    duration: 'Duration',
-    hours: 'hours',
-    atHome: 'At Home',
-    outside: 'Outside',
-    total: 'Total',
-    egp: 'EGP',
-    cancel: 'Cancel',
-    payNow: 'Pay Now',
-    rateService: 'Rate Service',
-    noRequests: 'No requests in this list',
-    rating: 'Rating',
-    writeReview: 'Write your review',
-    submit: 'Submit',
-    cancelBooking: 'Cancel Request',
-    cancelConfirm: 'Are you sure you want to cancel this request?',
-    yes: 'Yes',
-    no: 'No',
-    bookingCancelled: 'Request cancelled successfully',
-    chat: 'Chat',
-    scanQR: 'Scan QR',
-    scanTitle: 'Verify Sitter Identity',
-    scanDesc: 'Point camera at the Sitter\'s QR code to confirm and start service',
-    simulateScan: 'Simulate Scan (Demo)',
-    scanSuccess: 'Identity Verified! Service Started Successfully.',
-    ongoing: 'Ongoing',
-    recordVoice: 'Voice Record',
-    startRecording: 'Start Recording',
-    stopRecording: 'Stop Recording',
-    voiceMessage: 'Voice Message',
-    or: 'OR',
-  }
-};
+export default function ClientBookings({ }: ClientBookingsProps) {
+  const { user } = useAuthStore();
+  const { t } = useTranslation();
+  const bookingsT = t.client.bookings;
 
-const mockBookings: Booking[] = [
-  {
-    id: 1,
-    sitterName: 'ياسمين علي',
-    sitterImage: 'https://images.unsplash.com/photo-1489424731084-a5d8b219a5bb?w=400',
-    date: '2024-11-26',
-    time: '16:00',
-    duration: 2,
-    location: 'المنيا الجديدة',
-    type: 'home',
-    status: 'pending',
-    price: 130
-  },
-  {
-    id: 5,
-    sitterName: 'هدير محمد',
-    sitterImage: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=400',
-    date: '2024-12-01',
-    time: '10:00',
-    duration: 3,
-    location: 'المنيا',
-    type: 'home',
-    status: 'upcoming', // Confirmed and paid
-    price: 240
-  },
-  {
-    id: 2,
-    sitterName: 'سارة حسن',
-    sitterImage: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400',
-    date: '2024-11-27',
-    time: '09:00',
-    duration: 4,
-    location: 'المنيا',
-    type: 'outside',
-    status: 'waiting_payment',
-    price: 320
-  },
-  {
-    id: 3,
-    sitterName: 'منى عبدالله',
-    sitterImage: 'https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?w=400',
-    date: '2024-11-20',
-    time: '09:00',
-    duration: 4,
-    location: 'المنيا الجديدة',
-    type: 'home',
-    status: 'completed',
-    price: 480
-  },
-  {
-    id: 4,
-    sitterName: 'نورهان محمد',
-    sitterImage: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400',
-    date: '2024-11-15',
-    time: '14:00',
-    duration: 2,
-    location: 'المنيا',
-    type: 'outside',
-    status: 'cancelled',
-    price: 200
-  }
-];
-
-export default function ClientBookings({ language }: ClientBookingsProps) {
-  const [bookings, setBookings] = useState<Booking[]>(mockBookings);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [showRatingDialog, setShowRatingDialog] = useState(false);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
@@ -187,14 +51,69 @@ export default function ClientBookings({ language }: ClientBookingsProps) {
   const [showScanner, setShowScanner] = useState(false);
   const [rating, setRating] = useState(0);
   const [review, setReview] = useState('');
-  
+
   // Voice Recording State
   const [isRecording, setIsRecording] = useState(false);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const t = translations[language];
+  useEffect(() => {
+    if (user?.id) {
+      loadBookings();
+
+      const bookingChannel = supabase
+        .channel('client-bookings')
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'bookings',
+            filter: `client_id=eq.${user.id}`
+          },
+          () => {
+            loadBookings();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(bookingChannel);
+      };
+    }
+  }, [user?.id]);
+
+  const loadBookings = async () => {
+    try {
+      setLoading(true);
+      if (!user?.id) return;
+
+      const data = await bookingService.getClientBookings(user.id);
+
+      if (data) {
+        const formattedBookings: Booking[] = data.map((b: any) => ({
+          id: b.id,
+          sitterId: b.sitter_id,
+          sitterName: b.sitter?.full_name || 'Sitter',
+          sitterImage: b.sitter?.avatar_url || 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400',
+          date: b.date,
+          time: b.start_time,
+          duration: b.duration_hours,
+          location: b.location,
+          type: b.booking_type,
+          status: b.status,
+          price: b.total_price
+        }));
+        setBookings(formattedBookings);
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error(bookingsT.error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const toggleRecording = () => {
     if (isRecording) {
@@ -235,7 +154,7 @@ export default function ClientBookings({ language }: ClientBookingsProps) {
 
     return (
       <Badge className={styles[status]}>
-        {t[status] || status}
+        {status === 'waiting_payment' ? bookingsT.waitingPayment : (bookingsT[status as keyof typeof bookingsT] || status)}
       </Badge>
     );
   };
@@ -246,53 +165,82 @@ export default function ClientBookings({ language }: ClientBookingsProps) {
         return booking.status === 'completed' || booking.status === 'cancelled';
       }
       if (status === 'upcoming') {
-         return booking.status === 'upcoming' || booking.status === 'ongoing';
+        return booking.status === 'upcoming' || booking.status === 'ongoing';
       }
       return booking.status === status;
     });
   };
 
-  const handleRating = () => {
-    if (selectedBooking && rating > 0) {
-      alert(language === 'ar' ? 'شكراً لتقييمك!' : 'Thank you for your rating!');
+  const handleRating = async () => {
+    if (!selectedBooking || rating === 0 || !user?.id) return;
+
+    try {
+      await reviewService.createReview({
+        booking_id: selectedBooking.id,
+        reviewer_id: user.id,
+        reviewee_id: selectedBooking.sitterId,
+        rating: rating,
+        comment: review
+      });
+
+      toast.success(bookingsT.thankYouReview);
       setShowRatingDialog(false);
       setRating(0);
       setReview('');
       setAudioBlob(null);
+      loadBookings();
+    } catch (error) {
+      console.error(error);
+      toast.error(bookingsT.error);
     }
   };
 
-  const handleCancelBooking = () => {
-    alert(t.bookingCancelled);
-    setShowCancelDialog(false);
-    setSelectedBooking(null);
+  const handleCancelBooking = async () => {
+    if (!selectedBooking) return;
+    try {
+      await bookingService.updateStatus(selectedBooking.id, 'cancelled');
+      toast.success(bookingsT.bookingCancelled);
+      setShowCancelDialog(false);
+      setSelectedBooking(null);
+      loadBookings();
+    } catch (error) {
+      toast.error(bookingsT.error);
+    }
   };
 
-  const handlePaymentSuccess = () => {
+  const handlePaymentSuccess = async () => {
     if (paymentBooking) {
-      // Update status to upcoming
-      setBookings(prev => prev.map(b => b.id === paymentBooking.id ? {...b, status: 'upcoming'} : b));
-      alert(language === 'ar' ? 'تم الدفع بنجاح! يمكنك متابعة الحجز في قائمة "القادمة".' : 'Payment successful! You can track the booking in "Upcoming".');
-      setShowPaymentPage(false);
-      setPaymentBooking(null);
+      try {
+        await bookingService.updateStatus(paymentBooking.id, 'upcoming');
+        toast.success(bookingsT.paymentSuccess);
+        setShowPaymentPage(false);
+        setPaymentBooking(null);
+        loadBookings();
+      } catch (error) {
+        toast.error(bookingsT.error);
+      }
     }
   };
 
-  const handleScanSuccess = () => {
-      if (selectedBooking) {
-          setBookings(prev => prev.map(b => b.id === selectedBooking.id ? {...b, status: 'ongoing'} : b));
-          alert(t.scanSuccess);
-          setShowScanner(false);
+  const handleScanSuccess = async () => {
+    if (selectedBooking) {
+      try {
+        await bookingService.updateStatus(selectedBooking.id, 'ongoing');
+        toast.success(bookingsT.scanSuccess);
+        setShowScanner(false);
+        loadBookings();
+      } catch (error) {
+        toast.error(bookingsT.error);
       }
+    }
   };
 
   if (showPaymentPage && paymentBooking) {
     return (
       <PaymentPage
-        language={language}
         bookingData={{
           sitterName: paymentBooking.sitterName,
-          service: paymentBooking.type === 'home' ? (language === 'ar' ? 'رعاية منزلية' : 'Home Care') : (language === 'ar' ? 'رعاية خارجية' : 'Outside Care'),
+          service: paymentBooking.type === 'home' ? bookingsT.homeCare : bookingsT.outsideCare,
           date: paymentBooking.date,
           duration: paymentBooking.duration,
           amount: paymentBooking.price
@@ -307,14 +255,15 @@ export default function ClientBookings({ language }: ClientBookingsProps) {
   }
 
   if (showChat && chatBooking) {
-      return (
-          <ChatPage 
-            language={language}
-            onBack={() => setShowChat(false)}
-            recipientName={chatBooking.sitterName}
-            recipientImage={chatBooking.sitterImage}
-          />
-      );
+    return (
+      <ChatPage
+        onBack={() => setShowChat(false)}
+        bookingId={chatBooking.id}
+        recipientId={chatBooking.sitterId}
+        recipientName={chatBooking.sitterName}
+        recipientImage={chatBooking.sitterImage}
+      />
+    );
   }
 
   const renderBookingCard = (booking: Booking) => (
@@ -328,7 +277,7 @@ export default function ClientBookings({ language }: ClientBookingsProps) {
         <div className="flex-1">
           <div className="flex items-start justify-between mb-2">
             <div>
-              <h3 className="mb-1">{language === 'ar' ? 'الخالة : ' : 'Khala : '}{booking.sitterName}</h3>
+              <h3 className="mb-1">{bookingsT.khalaLabel}{booking.sitterName}</h3>
               {getStatusBadge(booking.status)}
             </div>
           </div>
@@ -340,7 +289,7 @@ export default function ClientBookings({ language }: ClientBookingsProps) {
             </div>
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4" />
-              <span>{booking.time} ({booking.duration} {t.hours})</span>
+              <span>{booking.time} ({booking.duration} {bookingsT.hours})</span>
             </div>
             <div className="flex items-center gap-2">
               <MapPin className="w-4 h-4" />
@@ -351,16 +300,14 @@ export default function ClientBookings({ language }: ClientBookingsProps) {
           <div className="flex items-center justify-between">
             <div>
               <Badge variant="outline">
-                {booking.type === 'home' ? t.atHome : t.outside}
+                {booking.type === 'home' ? bookingsT.atHome : bookingsT.outside}
               </Badge>
-              <div className="text-[#FB5E7A] mt-1">
-                {t.total}: {booking.price} {t.egp}
+              <div className="text-[#FB5E7A] mt-1 font-bold">
+                {bookingsT.total}: {booking.price} {bookingsT.egp}
               </div>
             </div>
 
             <div className="flex gap-2">
-              
-              {/* Actions for Completed */}
               {booking.status === 'completed' && !booking.rating && (
                 <Button
                   size="sm"
@@ -371,14 +318,13 @@ export default function ClientBookings({ language }: ClientBookingsProps) {
                   className="bg-[#FB5E7A] hover:bg-[#e5536e]"
                 >
                   <Star className="w-4 h-4 mr-1" />
-                  {t.rateService}
+                  {bookingsT.rateService}
                 </Button>
               )}
-              
-              {/* Actions for Waiting Payment */}
+
               {booking.status === 'waiting_payment' && (
-                <Button 
-                  size="sm" 
+                <Button
+                  size="sm"
                   className="bg-green-600 hover:bg-green-700"
                   onClick={() => {
                     setPaymentBooking(booking);
@@ -386,54 +332,51 @@ export default function ClientBookings({ language }: ClientBookingsProps) {
                   }}
                 >
                   <CreditCard className="w-4 h-4 mr-1" />
-                  {t.payNow}
+                  {bookingsT.payNow}
                 </Button>
               )}
 
-              {/* Actions for Confirmed (Upcoming) */}
               {booking.status === 'upcoming' && (
-                  <>
-                    <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                            setChatBooking(booking);
-                            setShowChat(true);
-                        }}
-                    >
-                        <MessageCircle className="w-4 h-4" />
-                    </Button>
-                    <Button
-                        size="sm"
-                        className="bg-[#FB5E7A] hover:bg-[#e5536e]"
-                        onClick={() => {
-                            setSelectedBooking(booking);
-                            setShowScanner(true);
-                        }}
-                    >
-                        <QrCode className="w-4 h-4 mr-1" />
-                        {t.scanQR}
-                    </Button>
-                  </>
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setChatBooking(booking);
+                      setShowChat(true);
+                    }}
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="bg-[#FB5E7A] hover:bg-[#e5536e]"
+                    onClick={() => {
+                      setSelectedBooking(booking);
+                      setShowScanner(true);
+                    }}
+                  >
+                    <QrCode className="w-4 h-4 mr-1" />
+                    {bookingsT.scanQR}
+                  </Button>
+                </>
               )}
-              
-               {/* Actions for Ongoing */}
-               {booking.status === 'ongoing' && (
-                   <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                            setChatBooking(booking);
-                            setShowChat(true);
-                        }}
-                        className="w-full"
-                    >
-                        <MessageCircle className="w-4 h-4 mr-2" />
-                        {t.chat}
-                    </Button>
-               )}
 
-              {/* Actions for Pending */}
+              {booking.status === 'ongoing' && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setChatBooking(booking);
+                    setShowChat(true);
+                  }}
+                  className="w-full"
+                >
+                  <MessageCircle className="w-4 h-4 mr-2" />
+                  {bookingsT.chat}
+                </Button>
+              )}
+
               {booking.status === 'pending' && (
                 <Button
                   size="sm"
@@ -445,7 +388,7 @@ export default function ClientBookings({ language }: ClientBookingsProps) {
                   }}
                 >
                   <X className="w-4 h-4 mr-1" />
-                  {t.cancel}
+                  {bookingsT.cancel}
                 </Button>
               )}
             </div>
@@ -457,66 +400,72 @@ export default function ClientBookings({ language }: ClientBookingsProps) {
 
   return (
     <div className="max-w-4xl mx-auto px-4 pb-8">
-      <h1 className="text-[#FB5E7A] mb-6">{t.requests}</h1>
+      {loading ? (
+        <div className="text-center py-12 text-gray-500">{bookingsT.loading}</div>
+      ) : (
+        <Tabs defaultValue="pending" className="space-y-4">
+          {/* Sticky Header */}
+          <div className="sticky top-0 z-50 bg-gray-50 dark:bg-gray-900 pt-4 pb-4 -mx-4 px-4 mb-2 border-b border-gray-100 dark:border-gray-800">
+            <h1 className="text-[#FB5E7A] mb-4 text-2xl font-bold">{bookingsT.title}</h1>
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="pending">{bookingsT.pending}</TabsTrigger>
+              <TabsTrigger value="waiting_payment">{bookingsT.waitingPayment}</TabsTrigger>
+              <TabsTrigger value="upcoming">{bookingsT.upcoming}</TabsTrigger>
+              <TabsTrigger value="history">{bookingsT.completed}</TabsTrigger>
+            </TabsList>
+          </div>
 
-      <Tabs defaultValue="pending" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="pending">{t.pending}</TabsTrigger>
-          <TabsTrigger value="waiting_payment">{t.waitingPayment}</TabsTrigger>
-          <TabsTrigger value="upcoming">{t.upcoming}</TabsTrigger>
-          <TabsTrigger value="history">{t.completed}</TabsTrigger>
-        </TabsList>
+          <TabsContent value="pending" className="space-y-4 pt-2">
+            {filterBookings('pending').length === 0 ? (
+              <div className="text-center py-12 text-gray-500">
+                {bookingsT.noRequests}
+              </div>
+            ) : (
+              filterBookings('pending').map(renderBookingCard)
+            )}
+          </TabsContent>
 
-        <TabsContent value="pending" className="space-y-4">
-          {filterBookings('pending').length === 0 ? (
-            <div className="text-center py-12 text-gray-500">
-              {t.noRequests}
-            </div>
-          ) : (
-            filterBookings('pending').map(renderBookingCard)
-          )}
-        </TabsContent>
+          <TabsContent value="waiting_payment" className="space-y-4">
+            {filterBookings('waiting_payment').length === 0 ? (
+              <div className="text-center py-12 text-gray-500">
+                {bookingsT.noRequests}
+              </div>
+            ) : (
+              filterBookings('waiting_payment').map(renderBookingCard)
+            )}
+          </TabsContent>
 
-        <TabsContent value="waiting_payment" className="space-y-4">
-          {filterBookings('waiting_payment').length === 0 ? (
-            <div className="text-center py-12 text-gray-500">
-              {t.noRequests}
-            </div>
-          ) : (
-            filterBookings('waiting_payment').map(renderBookingCard)
-          )}
-        </TabsContent>
+          <TabsContent value="upcoming" className="space-y-4">
+            {filterBookings('upcoming').length === 0 ? (
+              <div className="text-center py-12 text-gray-500">
+                {bookingsT.noRequests}
+              </div>
+            ) : (
+              filterBookings('upcoming').map(renderBookingCard)
+            )}
+          </TabsContent>
 
-        <TabsContent value="upcoming" className="space-y-4">
-          {filterBookings('upcoming').length === 0 ? (
-            <div className="text-center py-12 text-gray-500">
-              {t.noRequests}
-            </div>
-          ) : (
-            filterBookings('upcoming').map(renderBookingCard)
-          )}
-        </TabsContent>
-
-        <TabsContent value="history" className="space-y-4">
-          {filterBookings('history').length === 0 ? (
-            <div className="text-center py-12 text-gray-500">
-              {t.noRequests}
-            </div>
-          ) : (
-            filterBookings('history').map(renderBookingCard)
-          )}
-        </TabsContent>
-      </Tabs>
+          <TabsContent value="history" className="space-y-4">
+            {filterBookings('history').length === 0 ? (
+              <div className="text-center py-12 text-gray-500">
+                {bookingsT.noRequests}
+              </div>
+            ) : (
+              filterBookings('history').map(renderBookingCard)
+            )}
+          </TabsContent>
+        </Tabs>
+      )}
 
       {/* Rating Dialog */}
       <Dialog open={showRatingDialog} onOpenChange={setShowRatingDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t.rateService}</DialogTitle>
+            <DialogTitle>{bookingsT.rateService}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label>{t.rating}</Label>
+              <Label>{bookingsT.rating}</Label>
               <div className="flex gap-2 justify-center">
                 {[1, 2, 3, 4, 5].map((star) => (
                   <button
@@ -525,11 +474,10 @@ export default function ClientBookings({ language }: ClientBookingsProps) {
                     className="focus:outline-none"
                   >
                     <Star
-                      className={`w-8 h-8 ${
-                        star <= rating
-                          ? 'fill-yellow-400 text-yellow-400'
-                          : 'text-gray-300'
-                      }`}
+                      className={`w-8 h-8 ${star <= rating
+                        ? 'fill-yellow-400 text-yellow-400'
+                        : 'text-gray-300'
+                        }`}
                     />
                   </button>
                 ))}
@@ -537,37 +485,28 @@ export default function ClientBookings({ language }: ClientBookingsProps) {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="review">{t.writeReview}</Label>
+              <Label htmlFor="review">{bookingsT.writeReview}</Label>
               <Textarea
                 id="review"
                 value={review}
                 onChange={(e) => setReview(e.target.value)}
                 rows={4}
-                placeholder={language === 'ar' ? 'شاركي تجربتك...' : 'Share your experience...'}
+                placeholder={bookingsT.reviewPlaceholder}
               />
             </div>
-            
-            <div className="text-center text-gray-500 text-sm">{t.or}</div>
 
-            {/* Voice Recording */}
             <div className="flex flex-col items-center gap-3 border-t pt-4">
-                <Button
-                    variant={isRecording ? "destructive" : "outline"}
-                    size="lg"
-                    onClick={toggleRecording}
-                    className={`rounded-full w-16 h-16 flex items-center justify-center ${isRecording ? 'animate-pulse' : ''}`}
-                >
-                    {isRecording ? <StopCircle className="w-8 h-8" /> : <Mic className="w-8 h-8" />}
-                </Button>
-                <span className="text-sm font-mono">
-                    {isRecording ? formatDuration(recordingDuration) : (audioBlob ? t.voiceMessage : t.recordVoice)}
-                </span>
-                {audioBlob && !isRecording && (
-                    <div className="flex items-center gap-2 text-sm text-green-600">
-                        <Play className="w-4 h-4" />
-                        {t.voiceMessage}
-                    </div>
-                )}
+              <Button
+                variant={isRecording ? "destructive" : "outline"}
+                size="lg"
+                onClick={toggleRecording}
+                className={`rounded-full w-16 h-16 flex items-center justify-center ${isRecording ? 'animate-pulse' : ''}`}
+              >
+                {isRecording ? <StopCircle className="w-8 h-8" /> : <Mic className="w-8 h-8" />}
+              </Button>
+              <span className="text-sm font-mono mt-2 text-gray-600 dark:text-gray-400">
+                {isRecording ? formatDuration(recordingDuration) : (audioBlob ? bookingsT.voiceMessage : bookingsT.tapToRecord)}
+              </span>
             </div>
 
             <Button
@@ -575,7 +514,7 @@ export default function ClientBookings({ language }: ClientBookingsProps) {
               disabled={rating === 0}
               className="w-full bg-[#FB5E7A] hover:bg-[#e5536e]"
             >
-              {t.submit}
+              {bookingsT.submit}
             </Button>
           </div>
         </DialogContent>
@@ -585,23 +524,23 @@ export default function ClientBookings({ language }: ClientBookingsProps) {
       <Dialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t.cancelBooking}</DialogTitle>
+            <DialogTitle>{bookingsT.cancelBooking}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <p className="text-gray-600 dark:text-gray-400">{t.cancelConfirm}</p>
+            <p className="text-gray-600 dark:text-gray-400">{bookingsT.cancelConfirm}</p>
             <div className="flex gap-2">
               <Button
                 variant="outline"
                 onClick={() => setShowCancelDialog(false)}
                 className="flex-1"
               >
-                {t.no}
+                {bookingsT.no}
               </Button>
               <Button
                 onClick={handleCancelBooking}
                 className="flex-1 bg-red-500 hover:bg-red-600"
               >
-                {t.yes}
+                {bookingsT.yes}
               </Button>
             </div>
           </div>
@@ -610,25 +549,24 @@ export default function ClientBookings({ language }: ClientBookingsProps) {
 
       {/* Scanner Modal */}
       <Dialog open={showScanner} onOpenChange={setShowScanner}>
-          <DialogContent>
-              <DialogHeader>
-                  <DialogTitle>{t.scanTitle}</DialogTitle>
-              </DialogHeader>
-              <div className="flex flex-col items-center gap-4 py-6">
-                  <div className="w-64 h-64 bg-black rounded-lg flex items-center justify-center relative overflow-hidden">
-                      {/* Camera UI Mock */}
-                      <div className="absolute inset-0 border-2 border-[#FB5E7A] opacity-50 m-8"></div>
-                      <p className="text-white text-sm text-center px-4">{t.scanDesc}</p>
-                  </div>
-                  <Button 
-                    className="w-full bg-[#FB5E7A] hover:bg-[#e5536e]"
-                    onClick={handleScanSuccess}
-                  >
-                      <CheckCircle className="w-4 h-4 mr-2" />
-                      {t.simulateScan}
-                  </Button>
-              </div>
-          </DialogContent>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{bookingsT.scanTitle}</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-4 py-6">
+            <div className="w-64 h-64 bg-black rounded-lg flex items-center justify-center relative overflow-hidden">
+              <div className="absolute inset-0 border-2 border-[#FB5E7A] opacity-50 m-8"></div>
+              <p className="text-white text-sm text-center px-4">{bookingsT.scanDesc}</p>
+            </div>
+            <Button
+              className="w-full bg-[#FB5E7A] hover:bg-[#e5536e]"
+              onClick={handleScanSuccess}
+            >
+              <CheckCircle className="w-4 h-4 mr-2" />
+              {bookingsT.simulateScan}
+            </Button>
+          </div>
+        </DialogContent>
       </Dialog>
     </div>
   );

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { ArrowLeft, ArrowRight, DollarSign, Save, Plus, Trash2, Clock, Calendar, CalendarDays } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ArrowLeft, ArrowRight, DollarSign, Save, Plus, Trash2, Clock, Calendar, CalendarDays, Loader2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import { Label } from '../ui/label';
@@ -7,6 +7,9 @@ import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
 import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
 import { Checkbox } from '../ui/checkbox';
+import { useAuthStore } from '../../stores/useAuthStore';
+import { sitterService } from '../../services/sitter';
+import { toast } from 'sonner';
 import type { Language } from '../../App';
 
 const translations = {
@@ -159,14 +162,89 @@ export default function ServicesManagement({ language, onBack }: ServicesManagem
     }
   };
 
-  const saveServices = () => {
-    // In real app, this would save to backend
-    console.log('Saving services:', {
-      hourly: hourlyService,
-      weekly: weeklyService,
-      monthly: monthlyService
-    });
-    alert(t.saved);
+  const { user } = useAuthStore();
+  const [loading, setLoading] = useState(false);
+
+  // Load existing services on mount
+  useEffect(() => {
+    if (user?.id) {
+      loadServices();
+    }
+  }, [user?.id]);
+
+  const loadServices = async () => {
+    try {
+      setLoading(true);
+      if (!user?.id) return;
+      const services = await sitterService.getServices(user.id);
+
+      services.forEach(service => {
+        const serviceData = {
+          enabled: service.is_active !== false,
+          price: service.price,
+          description: service.description || '',
+          minimumHours: service.minimum_hours || 1,
+          features: Array.isArray(service.features) ? service.features : JSON.parse(service.features as any || '[]')
+        };
+
+        if (service.service_type === 'hourly') setHourlyService(serviceData);
+        if (service.service_type === 'weekly') setWeeklyService(serviceData);
+        if (service.service_type === 'monthly') setMonthlyService(serviceData);
+      });
+    } catch (error) {
+      console.error('Error loading services:', error);
+      toast.error(language === 'ar' ? 'حدث خطأ في تحميل الخدمات' : 'Error loading services');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveServices = async () => {
+    try {
+      setLoading(true);
+      if (!user?.id) return;
+
+      const promises = [];
+
+      // Always save all services with their enabled/disabled status
+      promises.push(sitterService.upsertService(
+        user.id,
+        'hourly',
+        hourlyService.price,
+        hourlyService.description,
+        hourlyService.minimumHours,
+        hourlyService.features,
+        hourlyService.enabled
+      ));
+
+      promises.push(sitterService.upsertService(
+        user.id,
+        'weekly',
+        weeklyService.price,
+        weeklyService.description,
+        weeklyService.minimumHours,
+        weeklyService.features,
+        weeklyService.enabled
+      ));
+
+      promises.push(sitterService.upsertService(
+        user.id,
+        'monthly',
+        monthlyService.price,
+        monthlyService.description,
+        monthlyService.minimumHours,
+        monthlyService.features,
+        monthlyService.enabled
+      ));
+
+      await Promise.all(promises);
+      toast.success(t.saved);
+    } catch (error) {
+      console.error('Error saving services:', error);
+      toast.error(language === 'ar' ? 'حدث خطأ في حفظ الخدمات' : 'Error saving services');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -187,9 +265,10 @@ export default function ServicesManagement({ language, onBack }: ServicesManagem
             </div>
             <Button
               onClick={saveServices}
+              disabled={loading}
               className="bg-[#FB5E7A] hover:bg-[#e5536e]"
             >
-              <Save className="size-4" />
+              {loading ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
               {t.saveServices}
             </Button>
           </div>

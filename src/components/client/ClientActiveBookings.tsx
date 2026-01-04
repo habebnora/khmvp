@@ -1,19 +1,23 @@
-import { useState } from 'react';
-import { Calendar, Clock, MapPin, MessageCircle, QrCode, CheckCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Calendar, Clock, MapPin, MessageCircle, QrCode, CheckCircle, Loader2 } from 'lucide-react';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import ChatPage from './ChatPage';
 import TrackingPage from './TrackingPage';
-import type { Language } from '../../App';
+import { bookingService } from '@/services/booking';
+import { useAuthStore } from '@/stores/useAuthStore';
+import { toast } from 'sonner';
+import { Html5QrcodeScanner } from 'html5-qrcode';
+import { useTranslation } from '@/hooks/useTranslation';
+import { notificationService } from '@/services/notification';
+import { supabase } from '@/lib/supabase';
 
-interface ClientActiveBookingsProps {
-  language: Language;
-}
 
-interface Booking {
-  id: number;
+interface FormattedBooking {
+  id: string;
+  sitter_id: string;
   sitterName: string;
   sitterImage: string;
   date: string;
@@ -21,126 +25,222 @@ interface Booking {
   duration: number;
   location: string;
   type: 'home' | 'outside';
-  status: 'confirmed' | 'ongoing';
+  status: 'confirmed' | 'ongoing' | 'upcoming' | 'waiting_payment';
   price: number;
 }
 
-const translations = {
-  ar: {
-    mySchedule: 'مواعيدي',
-    ongoing: 'جارية الآن',
-    confirmed: 'مؤكدة (قادمة)',
-    date: 'التاريخ',
-    time: 'الوقت',
-    duration: 'المدة',
-    hours: 'ساعات',
-    atHome: 'في المنزل',
-    outside: 'خارج المنزل',
-    total: 'الإجمالي',
-    egp: 'جنيه',
-    contact: 'تواصل',
-    call: 'اتصال',
-    message: 'رسالة',
-    noActiveBookings: 'لا توجد مواعيد مؤكدة حالياً',
-    trackBooking: 'متابعة الطلب',
-    scanQR: 'مسح الكود',
-    scanTitle: 'تأكيد هوية الخالة',
-    scanDesc: 'وجهي الكاميرا نحو كود QR الخاص بالخالة لتأكيد بدء الخدمة',
-    simulateScan: 'محاكاة المسح (تجريبي)',
-    scanSuccess: 'تم تأكيد الهوية وبدء الخدمة بنجاح!',
-  },
-  en: {
-    mySchedule: 'My Schedule',
-    ongoing: 'Ongoing',
-    confirmed: 'Confirmed (Upcoming)',
-    date: 'Date',
-    time: 'Time',
-    duration: 'Duration',
-    hours: 'hours',
-    atHome: 'At Home',
-    outside: 'Outside',
-    total: 'Total',
-    egp: 'EGP',
-    contact: 'Contact',
-    call: 'Call',
-    message: 'Message',
-    noActiveBookings: 'No active bookings',
-    trackBooking: 'Track Booking',
-    scanQR: 'Scan QR',
-    scanTitle: 'Verify Sitter Identity',
-    scanDesc: 'Point camera at the Sitter\'s QR code to confirm and start service',
-    simulateScan: 'Simulate Scan (Demo)',
-    scanSuccess: 'Identity Verified! Service Started Successfully.',
-  }
-};
+// ... imports
 
-const initialMockActiveBookings: Booking[] = [
-  {
-    id: 1,
-    sitterName: 'فاطمة أحمد',
-    sitterImage: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400',
-    date: '2024-11-25',
-    time: '10:00',
-    duration: 3,
-    location: 'المنيا الجديدة، شارع الجامعة',
-    type: 'home',
-    status: 'confirmed',
-    price: 240
-  },
-  {
-    id: 2,
-    sitterName: 'نورهان محمد',
-    sitterImage: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400',
-    date: '2024-11-25',
-    time: '14:00',
-    duration: 2,
-    location: 'المنيا',
-    type: 'outside',
-    status: 'ongoing',
-    price: 200
-  }
-];
+interface ClientActiveBookingsProps {
+  onNavigate?: (tab: 'home' | 'requests' | 'schedule' | 'profile') => void;
+}
 
-export default function ClientActiveBookings({ language }: ClientActiveBookingsProps) {
-  const [activeBookings, setActiveBookings] = useState<Booking[]>(initialMockActiveBookings);
+export default function ClientActiveBookings({ onNavigate }: ClientActiveBookingsProps) {
+  const { user } = useAuthStore();
+  const { t, language } = useTranslation();
+  const activeT = t.client.activeBookings;
+
+  const [activeBookings, setActiveBookings] = useState<FormattedBooking[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [showChat, setShowChat] = useState(false);
-  const [chatBooking, setChatBooking] = useState<Booking | null>(null);
-  
+  const [chatBooking, setChatBooking] = useState<FormattedBooking | null>(null);
+
   const [showTracking, setShowTracking] = useState(false);
-  const [trackingBooking, setTrackingBooking] = useState<Booking | null>(null);
+  const [trackingBooking, setTrackingBooking] = useState<FormattedBooking | null>(null);
 
   const [showScanner, setShowScanner] = useState(false);
-  const [scanningBooking, setScanningBooking] = useState<Booking | null>(null);
+  const [scanningBooking, setScanningBooking] = useState<FormattedBooking | null>(null);
 
-  const t = translations[language];
+  useEffect(() => {
+    let scanner: Html5QrcodeScanner | null = null;
 
-  const getStatusBadge = (status: Booking['status']) => {
+    if (showScanner && scanningBooking) {
+      const timer = setTimeout(() => {
+        scanner = new Html5QrcodeScanner(
+          "reader",
+          {
+            fps: 10,
+            qrbox: { width: 250, height: 250 },
+            aspectRatio: 1.0
+          },
+          false
+        );
+
+        scanner.render(async (decodedText: string) => {
+          // Format: KHMVP-VERIFY:booking_id:sitter_id:client_id
+          if (decodedText.startsWith('KHMVP-VERIFY:')) {
+            const parts = decodedText.split(':');
+            const [_, scannedBookingId, scannedSitterId, scannedClientId] = parts;
+
+            // 1. Check if it's the right booking ID
+            if (scannedBookingId !== scanningBooking.id) {
+              toast.error(activeT.wrongSitter);
+              // Report to the scanned sitter that a wrong client tried to scan them
+              notificationService.createNotification({
+                user_id: scannedSitterId,
+                type: 'scan_mismatch',
+                title: language === 'ar' ? 'تنبيه أمان' : 'Security Alert',
+                message: language === 'ar' ? 'هذه ليست العميلة المطلوبة' : 'This is not the correct client',
+                data: { scanned_by: user?.id, expected_client: scannedClientId }
+              }).catch(e => console.error("Failed to report mismatch", e));
+              return;
+            }
+
+            // 2. Check if it's the right sitter ID
+            if (scannedSitterId !== scanningBooking.sitter_id) {
+              toast.error(activeT.wrongSitter);
+              return;
+            }
+
+            // 3. Check if it's the right client ID
+            if (scannedClientId !== user?.id) {
+              toast.error(activeT.wrongClient);
+              // Report to the sitter that a wrong client tried to scan them
+              notificationService.createNotification({
+                user_id: scanningBooking.sitter_id,
+                type: 'scan_mismatch',
+                title: language === 'ar' ? 'تنبيه أمان' : 'Security Alert',
+                message: language === 'ar' ? 'هذه ليست العميلة المطلوبة' : 'This is not the correct client',
+                data: { scanned_by: user?.id, booking_id: scanningBooking.id }
+              }).catch(e => console.error("Failed to report mismatch", e));
+              return;
+            }
+
+            // All good!
+            if (scanner) scanner.clear();
+            await handleScanSuccess();
+          } else {
+            // Support legacy format for transition if needed, otherwise show error
+            if (decodedText === `Booking-${scanningBooking.id}`) {
+              if (scanner) scanner.clear();
+              await handleScanSuccess();
+            } else {
+              toast.error(language === 'ar' ? 'كود خاطئ!' : 'Invalid code!');
+            }
+          }
+        }, () => { });
+      }, 500);
+
+      return () => {
+        clearTimeout(timer);
+        if (scanner) {
+          scanner.clear().catch(err => console.error("Failed to clear scanner", err));
+        }
+      };
+    }
+  }, [showScanner, scanningBooking]);
+
+  useEffect(() => {
+    async function fetchActiveBookings() {
+      if (!user) return;
+      try {
+        setIsLoading(true);
+        const data = await bookingService.getClientBookings(user.id);
+        const active = data
+          .filter(b => b.status === 'ongoing' || b.status === 'upcoming' || b.status === 'waiting_payment')
+          .map(b => ({
+            id: b.id,
+            sitter_id: b.sitter_id,
+            sitterName: b.sitter?.full_name || 'Khala',
+            sitterImage: b.sitter?.avatar_url || 'https://via.placeholder.com/150',
+            date: b.date,
+            time: b.start_time,
+            duration: b.duration_hours,
+            location: b.location,
+            type: b.booking_type,
+            status: b.status,
+            price: b.total_price
+          } as FormattedBooking));
+
+        setActiveBookings(active);
+      } catch (error) {
+        console.error('Error fetching bookings:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    if (user?.id) {
+      fetchActiveBookings();
+
+      const bookingChannel = supabase
+        .channel('active-bookings')
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'bookings',
+            filter: `client_id=eq.${user.id}`
+          },
+          () => {
+            fetchActiveBookings();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(bookingChannel);
+      };
+    }
+  }, [user?.id]);
+
+  const getStatusBadge = (status: FormattedBooking['status']) => {
     const styles = {
       confirmed: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
       ongoing: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 animate-pulse',
+      upcoming: 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300',
+      waiting_payment: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300',
     };
 
     return (
       <Badge className={styles[status]}>
-        {t[status]}
+        {status === 'upcoming' || status === 'confirmed' ? activeT.confirmed :
+          status === 'ongoing' ? activeT.ongoing :
+            status}
       </Badge>
     );
   };
 
-  const handleScanSuccess = () => {
+  const handleScanSuccess = async () => {
     if (scanningBooking) {
-        setActiveBookings(prev => prev.map(b => b.id === scanningBooking.id ? {...b, status: 'ongoing'} : b));
-        alert(t.scanSuccess);
+      try {
+        const now = new Date();
+        const [year, month, day] = scanningBooking.date.split('-').map(Number);
+        const timeStr = scanningBooking.time;
+        const [hoursMin, period] = timeStr.split(' ');
+        let [hours, minutes] = hoursMin.split(':').map(Number);
+
+        if (period === 'PM' && hours < 12) hours += 12;
+        if (period === 'AM' && hours === 12) hours = 0;
+
+        const bookingDate = new Date(year, month - 1, day, hours, minutes);
+
+        if (now < bookingDate) {
+          const earlyError = language === 'ar'
+            ? 'لم يحن بعد وقت الطلب المتفق عليه'
+            : 'The agreed time for the request has not yet arrived';
+          toast.error(earlyError);
+          return;
+        }
+
+        await bookingService.updateStatus(scanningBooking.id, 'ongoing');
+        setActiveBookings((prev: FormattedBooking[]) => prev.map((b: FormattedBooking) => b.id === scanningBooking.id ? { ...b, status: 'ongoing' } : b));
+        toast.success(activeT.scanSuccess);
         setShowScanner(false);
-        // Optionally immediately open tracking or stay on list
+      } catch (error) {
+        console.error('Error starting session:', error);
+        toast.error(language === 'ar' ? 'حدث خطأ أثناء بدء الجلسة' : 'Error starting session');
+      }
     }
   };
 
   if (showChat && chatBooking) {
     return (
-      <ChatPage 
-        language={language}
+      <ChatPage
         onBack={() => setShowChat(false)}
+        bookingId={chatBooking.id}
+        recipientId={chatBooking.sitter_id}
         recipientName={chatBooking.sitterName}
         recipientImage={chatBooking.sitterImage}
       />
@@ -148,30 +248,53 @@ export default function ClientActiveBookings({ language }: ClientActiveBookingsP
   }
 
   if (showTracking && trackingBooking) {
-      return (
-          <TrackingPage 
-            language={language}
-            booking={{
-                ...trackingBooking,
-                startTime: trackingBooking.time
-            }}
-            onBack={() => setShowTracking(false)}
-          />
-      );
+    return (
+      <TrackingPage
+        booking={{
+          ...trackingBooking,
+          startTime: trackingBooking.time,
+          status: trackingBooking.status as 'ongoing' | 'confirmed'
+        }}
+        onBack={() => setShowTracking(false)}
+      />
+    );
   }
 
   return (
     <div className="max-w-4xl mx-auto px-4 pb-8">
-      <h1 className="text-[#FB5E7A] mb-6">{t.mySchedule}</h1>
+      {/* Sticky Header */}
+      <div className="sticky top-0 z-50 bg-white dark:bg-gray-950 pt-6 pb-4 -mx-4 px-4 mb-4 border-b border-gray-100 dark:border-gray-800">
+        <h1 className="text-[#FB5E7A] text-2xl font-bold">{activeT.mySchedule}</h1>
+      </div>
 
-      {activeBookings.length === 0 ? (
-        <div className="text-center py-12 text-gray-500">
-          <Calendar className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-          {t.noActiveBookings}
+      {isLoading ? (
+        <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+          <Loader2 className="w-12 h-12 animate-spin mb-4" />
+          <p>{activeT.loading}</p>
+        </div>
+      ) : activeBookings.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="w-20 h-20 bg-gray-50 dark:bg-gray-800 rounded-full flex items-center justify-center mb-6">
+            <Calendar className="w-10 h-10 text-gray-400" />
+          </div>
+          <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
+            {activeT.noActiveBookings}
+          </h3>
+          <p className="text-gray-500 mb-8 max-w-sm mx-auto">
+            {language === 'ar'
+              ? 'ليس لديك أي حجز نشط حالياً. تصفح قائمة الخالات واحجز موعدك الآن.'
+              : 'You don\'t have any active bookings. Browse our sitters and book your session now.'}
+          </p>
+          <Button
+            onClick={() => onNavigate?.('home')}
+            className="bg-[#FB5E7A] hover:bg-[#e5536e] px-8"
+          >
+            {language === 'ar' ? 'ابحث عن خالة' : 'Find a Sitter'}
+          </Button>
         </div>
       ) : (
         <div className="space-y-4">
-          {activeBookings.map((booking) => (
+          {activeBookings.map((booking: FormattedBooking) => (
             <Card key={booking.id} className={`p-4 ${booking.status === 'ongoing' ? 'border-green-500 border-2' : ''}`}>
               <div className="flex gap-4">
                 <img
@@ -182,7 +305,7 @@ export default function ClientActiveBookings({ language }: ClientActiveBookingsP
                 <div className="flex-1">
                   <div className="flex items-start justify-between mb-2">
                     <div>
-                      <h3 className="mb-1">{language === 'ar' ? 'الخالة : ' : 'Khala : '}{booking.sitterName}</h3>
+                      <h3 className="mb-1">{t.client.homePage.khala}{booking.sitterName}</h3>
                       {getStatusBadge(booking.status)}
                     </div>
                   </div>
@@ -194,7 +317,7 @@ export default function ClientActiveBookings({ language }: ClientActiveBookingsP
                     </div>
                     <div className="flex items-center gap-2">
                       <Clock className="w-4 h-4" />
-                      <span>{booking.time} ({booking.duration} {t.hours})</span>
+                      <span>{booking.time} ({booking.duration} {activeT.hours})</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <MapPin className="w-4 h-4" />
@@ -205,55 +328,55 @@ export default function ClientActiveBookings({ language }: ClientActiveBookingsP
                   <div className="flex items-center justify-between">
                     <div>
                       <Badge variant="outline">
-                        {booking.type === 'home' ? t.atHome : t.outside}
+                        {booking.type === 'home' ? activeT.atHome : activeT.outside}
                       </Badge>
                       <div className="text-[#FB5E7A] mt-1 font-bold">
-                        {booking.price} {t.egp}
+                        {booking.price} {activeT.egp}
                       </div>
                     </div>
 
                     <div className="flex gap-2">
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
+                      <Button
+                        size="sm"
+                        variant="outline"
                         className="rounded-full w-10 h-10 p-0"
                         onClick={() => {
-                            setChatBooking(booking);
-                            setShowChat(true);
+                          setChatBooking(booking);
+                          setShowChat(true);
                         }}
                       >
                         <MessageCircle className="w-4 h-4" />
                       </Button>
 
-                      {booking.status === 'confirmed' && (
-                          <Button 
-                            size="sm" 
-                            className="rounded-full w-10 h-10 p-0 bg-[#FB5E7A] hover:bg-[#e5536e]"
-                            onClick={() => {
-                                setScanningBooking(booking);
-                                setShowScanner(true);
-                            }}
-                          >
-                            <QrCode className="w-4 h-4 text-white" />
-                          </Button>
+                      {(booking.status === 'confirmed' || booking.status === 'upcoming') && (
+                        <Button
+                          size="sm"
+                          className="rounded-full w-10 h-10 p-0 bg-[#FB5E7A] hover:bg-[#e5536e]"
+                          onClick={() => {
+                            setScanningBooking(booking);
+                            setShowScanner(true);
+                          }}
+                        >
+                          <QrCode className="w-4 h-4 text-white" />
+                        </Button>
                       )}
                     </div>
                   </div>
                 </div>
               </div>
-              
+
               {booking.status === 'ongoing' && (
-                 <div className="mt-4 pt-4 border-t">
-                    <Button 
-                        className="w-full bg-green-600 hover:bg-green-700"
-                        onClick={() => {
-                            setTrackingBooking(booking);
-                            setShowTracking(true);
-                        }}
-                    >
-                        {t.trackBooking}
-                    </Button>
-                 </div>
+                <div className="mt-4 pt-4 border-t">
+                  <Button
+                    className="w-full bg-green-600 hover:bg-green-700"
+                    onClick={() => {
+                      setTrackingBooking(booking);
+                      setShowTracking(true);
+                    }}
+                  >
+                    {activeT.trackBooking}
+                  </Button>
+                </div>
               )}
             </Card>
           ))}
@@ -261,27 +384,31 @@ export default function ClientActiveBookings({ language }: ClientActiveBookingsP
       )}
 
       {/* Scanner Modal */}
-      <Dialog open={showScanner} onOpenChange={setShowScanner}>
-           <DialogContent>
-               <DialogHeader>
-                   <DialogTitle>{t.scanTitle}</DialogTitle>
-               </DialogHeader>
-               <div className="flex flex-col items-center gap-4 py-6">
-                   <div className="w-64 h-64 bg-black rounded-lg flex items-center justify-center relative overflow-hidden">
-                       {/* Camera UI Mock */}
-                       <div className="absolute inset-0 border-2 border-[#FB5E7A] opacity-50 m-8"></div>
-                       <p className="text-white text-sm text-center px-4">{t.scanDesc}</p>
-                   </div>
-                   <Button 
-                     className="w-full bg-[#FB5E7A] hover:bg-[#e5536e]"
-                     onClick={handleScanSuccess}
-                   >
-                       <CheckCircle className="w-4 h-4 mr-2" />
-                       {t.simulateScan}
-                   </Button>
-               </div>
-           </DialogContent>
-       </Dialog>
+      <Dialog open={showScanner} onOpenChange={(open: boolean) => {
+        if (!open) {
+          setShowScanner(false);
+        }
+      }}>
+        <DialogContent className="max-w-md w-[90vw]">
+          <DialogHeader>
+            <DialogTitle>{activeT.scanTitle}</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-4 py-6">
+            <div id="reader" className="w-full bg-black rounded-lg overflow-hidden min-h-[300px]"></div>
+
+            <p className="text-sm text-center text-gray-500 px-4">{activeT.scanDesc}</p>
+
+            <Button
+              variant="outline"
+              className="w-full border-dashed"
+              onClick={handleScanSuccess}
+            >
+              <CheckCircle className="w-4 h-4 mr-2" />
+              {activeT.simulateScan}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

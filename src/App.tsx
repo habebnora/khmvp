@@ -1,13 +1,17 @@
 import { useEffect, lazy, Suspense } from 'react';
+import type React from 'react';
 import { Toaster } from 'sonner';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { useAuthStore } from './stores/useAuthStore';
+import type { ClientAppProps } from './components/ClientApp';
+import type { SitterAppProps } from './components/SitterApp';
+
 export type { Language, UserType } from './stores/useAuthStore';
 
 // Lazy load main components for better performance
 const AuthPage = lazy(() => import('./components/AuthPage'));
-const ClientApp = lazy(() => import('./components/ClientApp'));
-const SitterApp = lazy(() => import('./components/SitterApp'));
+const ClientApp = lazy<React.ComponentType<ClientAppProps>>(() => import('./components/ClientApp'));
+const SitterApp = lazy<React.ComponentType<SitterAppProps>>(() => import('./components/SitterApp'));
 
 // Loading fallback component
 const PageLoader = () => (

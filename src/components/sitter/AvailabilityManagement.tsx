@@ -10,7 +10,7 @@ import { Badge } from '../ui/badge';
 import { Calendar as CalendarComponent } from '../ui/calendar';
 import { Input } from '../ui/input';
 import { Checkbox } from '../ui/checkbox';
-import type { Language } from '../../App';
+import type { Language } from '../../stores/useAuthStore';
 import type { CheckedState } from '@radix-ui/react-checkbox';
 
 const translations = {
@@ -109,7 +109,7 @@ export default function AvailabilityManagement({ language, onBack }: Availabilit
   const [schedules, setSchedules] = useState<Record<string, TimeSlot[]>>({});
   const [currentDateIndex, setCurrentDateIndex] = useState(0);
   const [repeatWeekly, setRepeatWeekly] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  // const [isLoading, setIsLoading] = useState(false);
   const t = translations[language];
 
   // Mock booked dates (dates with confirmed bookings)
@@ -132,7 +132,7 @@ export default function AvailabilityManagement({ language, onBack }: Availabilit
   const loadAvailability = async () => {
     if (!user?.id) return;
     try {
-      setIsLoading(true);
+      // setIsLoading(true);
       const data = await sitterService.getAvailability(user.id);
 
       const newSchedules: Record<string, TimeSlot[]> = {};
@@ -159,7 +159,7 @@ export default function AvailabilityManagement({ language, onBack }: Availabilit
       console.error(error);
       toast.error(t.error || 'Failed to load availability');
     } finally {
-      setIsLoading(false);
+      // setIsLoading(false);
     }
   };
 
@@ -243,7 +243,7 @@ export default function AvailabilityManagement({ language, onBack }: Availabilit
   const saveSchedule = async () => {
     if (!user?.id) return;
     try {
-      setIsLoading(true);
+      // setIsLoading(true);
       const datesToUpdate = Object.keys(schedules);
 
       // 1. Clear existing non-recurring slots for these dates
@@ -274,7 +274,7 @@ export default function AvailabilityManagement({ language, onBack }: Availabilit
       console.error(error);
       toast.error(t.error || 'Failed to save');
     } finally {
-      setIsLoading(false);
+      // setIsLoading(false);
     }
   };
 

@@ -65,6 +65,8 @@ export interface SitterDBProfile {
     availability_type: 'home' | 'outside' | 'both' | null;
     is_verified: boolean;
     is_active: boolean;
+    phone?: string | null;
+    created_at?: string;
     sitter_services?: SitterServiceDB[];
     sitter_skills?: SitterSkillDB[];
     sitter_languages?: SitterLanguageDB[];

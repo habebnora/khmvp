@@ -6,7 +6,8 @@ import ClientActiveBookings from './client/ClientActiveBookings';
 import ClientProfile from './client/ClientProfile';
 import { useTranslation } from '../hooks/useTranslation';
 
-interface ClientAppProps {
+export interface ClientAppProps {
+  language: string;
   onLogout: () => void;
   onLanguageChange: () => void;
   theme: 'light' | 'dark';
@@ -16,10 +17,12 @@ interface ClientAppProps {
 type ClientTab = 'home' | 'requests' | 'schedule' | 'profile';
 
 
-export default function ClientApp({ onLogout, onLanguageChange, theme, onThemeChange }: ClientAppProps) {
+export default function ClientApp({ language: propLanguage, onLogout, onLanguageChange, theme, onThemeChange }: ClientAppProps) {
   const [activeTab, setActiveTab] = useState<ClientTab>('home');
   const { t, language } = useTranslation();
   const clientT = t.client;
+
+  if (propLanguage && false) console.log(propLanguage); // Avoid unused warning
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-20">

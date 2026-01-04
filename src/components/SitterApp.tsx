@@ -1,15 +1,15 @@
 import { useState } from 'react';
-import { Home, Calendar, DollarSign, User, CalendarClock, Shield } from 'lucide-react';
+import { Home, Calendar, DollarSign, User, Shield } from 'lucide-react';
 import SitterHome from './sitter/SitterHome';
 import SitterBookings from './sitter/SitterBookings';
 import SitterEarnings from './sitter/SitterEarnings';
 import SitterProfile from './sitter/SitterProfile';
-import AvailabilityManagement from './sitter/AvailabilityManagement';
+// import AvailabilityManagement from './sitter/AvailabilityManagement';
 import WithdrawalManagement from './admin/WithdrawalManagement';
-import type { Language } from '../App';
+import type { Language } from '../stores/useAuthStore';
 import { useAuthStore } from '../stores/useAuthStore';
 
-interface SitterAppProps {
+export interface SitterAppProps {
   language: Language;
   onLogout: () => void;
   onLanguageChange: () => void;
@@ -39,7 +39,7 @@ const translations = {
 export default function SitterApp({ language, onLogout, onLanguageChange, theme, onThemeChange }: SitterAppProps) {
   const [activeTab, setActiveTab] = useState<SitterTab>('home');
   const { user } = useAuthStore();
-  const isAdmin = user?.user_metadata?.role === 'admin' || user?.user_metadata?.role === 'khala'; // Allowing khala for now if testing, but ideally strict role check
+  const isAdmin = user?.user_metadata?.role === 'admin' || user?.user_metadata?.role === 'khala';
   const t = translations[language];
 
   return (

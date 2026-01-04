@@ -2,10 +2,10 @@ import { useState, useEffect } from 'react';
 import { walletService } from '@/services/wallet';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
+// import { Badge } from '../ui/badge';
 import { Loader2, Check, X, User, Phone, DollarSign, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
-import type { Language } from '../../App';
+import type { Language } from '../../stores/useAuthStore';
 
 interface WithdrawalManagementProps {
     language: Language;

@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, ArrowRight, Check, X, Clock, MapPin, Calendar, User, Phone, AlertCircle, Loader2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, X, Clock, MapPin, Calendar, User, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Alert, AlertDescription } from '../ui/alert';
 import { Avatar } from '../ui/avatar';
-import type { Language } from '../../App';
+import type { Language } from '../../stores/useAuthStore';
 import { bookingService, type Booking } from '../../services/booking';
 import { notificationService } from '../../services/notification';
 import { sitterService } from '../../services/sitter';
@@ -51,6 +51,8 @@ const translations = {
     hourlyUrgent: 'ساعات فردية (مستعجل)',
     weeklyContract: 'دوام أسبوعي',
     monthlyContract: 'دوام شهري',
+    atHome: 'في منزل العميلة',
+    outside: 'خارج المنزل',
   },
   en: {
     back: 'Back',
@@ -90,6 +92,8 @@ const translations = {
     hourlyUrgent: 'Hourly (Urgent)',
     weeklyContract: 'Weekly Contract',
     monthlyContract: 'Monthly Contract',
+    atHome: 'At Client Home',
+    outside: 'Outside',
   }
 };
 
@@ -191,18 +195,7 @@ export default function BookingRequests({ language, isVerified, onBack }: Bookin
     }
   };
 
-  const getServiceName = (service: string) => {
-    switch (service) {
-      case 'hourly':
-        return t.hourlyUrgent;
-      case 'weekly':
-        return t.weeklyContract;
-      case 'monthly':
-        return t.monthlyContract;
-      default:
-        return service;
-    }
-  };
+  /* Removed getServiceName */
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -283,7 +276,7 @@ export default function BookingRequests({ language, isVerified, onBack }: Bookin
                     </div>
                     <div className="flex items-center gap-2">
                       <Clock className="size-4 text-gray-400" />
-                      <span>{request.time}</span>
+                      <span>{request.start_time}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <User className="size-4 text-gray-400" />

@@ -103,8 +103,8 @@ export default function SitterVerification({ language, onBack }: SitterVerificat
   }>({});
 
   const [verificationStatus, setVerificationStatus] = useState<'not_submitted' | 'pending' | 'approved' | 'rejected'>('not_submitted');
-  const [rejectionReason, setRejectionReason] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [rejectionReason] = useState('');
+  // const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const t = translations[language];
@@ -118,7 +118,7 @@ export default function SitterVerification({ language, onBack }: SitterVerificat
   const loadVerificationRequests = async () => {
     try {
       if (!user?.id) return;
-      setIsLoading(true);
+      // setIsLoading(true);
       const requests = await sitterService.getVerificationRequests(user.id);
 
       const newExistingDocs: typeof existingDocs = {};
@@ -151,7 +151,7 @@ export default function SitterVerification({ language, onBack }: SitterVerificat
       console.error(error);
       toast.error('Failed to load verification status');
     } finally {
-      setIsLoading(false);
+      // setIsLoading(false);
     }
   };
 
@@ -239,7 +239,7 @@ export default function SitterVerification({ language, onBack }: SitterVerificat
     existingUrl: string | undefined,
     label: string,
     id: string,
-    onChange: (e: React.ChangeEvent<HTMLInputElement>) => void
+    _onChange: (e: React.ChangeEvent<HTMLInputElement>) => void
   ) => {
     if (file) {
       // New file selected

@@ -142,7 +142,7 @@ export function useOnClickOutside<T extends HTMLElement = HTMLElement>(
  * Useful for comparing with current value
  */
 export function usePrevious<T>(value: T): T | undefined {
-    const ref = useRef<T>();
+    const ref = useRef<T | undefined>(undefined);
 
     useEffect(() => {
         ref.current = value;

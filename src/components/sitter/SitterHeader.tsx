@@ -71,7 +71,7 @@ export default function SitterHeader({ language, userName, onBack, showBack = fa
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
-        const { data, error } = await supabase
+        const { data } = await supabase
             .from('notifications')
             .select('*')
             .eq('user_id', user.id)

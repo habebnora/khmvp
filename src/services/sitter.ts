@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase';
 
-import { SitterProfile, SitterAvailability } from '@/types/core';
+import { SitterProfile, SitterAvailability } from '../types/core';
 
 export interface SitterService { // Keeping this as it's DB specific and slightly different from 'Service' view model, but could also be unified later
     id: string;

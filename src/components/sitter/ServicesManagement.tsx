@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, ArrowRight, DollarSign, Save, Plus, Trash2, Clock, Calendar, CalendarDays, Loader2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Save, Plus, Trash2, Clock, Calendar, CalendarDays, Loader2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import { Label } from '../ui/label';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
-import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
 import { Checkbox } from '../ui/checkbox';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { sitterService } from '../../services/sitter';
@@ -292,7 +291,7 @@ export default function ServicesManagement({ language, onBack }: ServicesManagem
               <Checkbox
                 id="hourly-enabled"
                 checked={hourlyService.enabled}
-                onCheckedChange={(checked) => setHourlyService(prev => ({ ...prev, enabled: checked as boolean }))}
+                onCheckedChange={(checked: boolean) => setHourlyService(prev => ({ ...prev, enabled: checked }))}
               />
             </div>
 
@@ -390,7 +389,7 @@ export default function ServicesManagement({ language, onBack }: ServicesManagem
               <Checkbox
                 id="weekly-enabled"
                 checked={weeklyService.enabled}
-                onCheckedChange={(checked) => setWeeklyService(prev => ({ ...prev, enabled: checked as boolean }))}
+                onCheckedChange={(checked: boolean) => setWeeklyService(prev => ({ ...prev, enabled: checked }))}
               />
             </div>
 
@@ -488,7 +487,7 @@ export default function ServicesManagement({ language, onBack }: ServicesManagem
               <Checkbox
                 id="monthly-enabled"
                 checked={monthlyService.enabled}
-                onCheckedChange={(checked) => setMonthlyService(prev => ({ ...prev, enabled: checked as boolean }))}
+                onCheckedChange={(checked: boolean) => setMonthlyService(prev => ({ ...prev, enabled: checked }))}
               />
             </div>
 

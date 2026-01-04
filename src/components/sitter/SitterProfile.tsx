@@ -254,15 +254,15 @@ export default function SitterProfile({ language, onLogout, onLanguageChange, th
           bio: data.bio || '',
           experience: data.experience_years || 0,
           isVerified: data.is_verified || false,
-          memberSince: new Date(data.created_at).toLocaleDateString(),
+          memberSince: data.created_at ? new Date(data.created_at).toLocaleDateString() : '',
           completedJobs: completedCount,
           avatarUrl: data.avatar_url || 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400'
         }));
         if (data.availability_type) setAvailabilityType(data.availability_type);
         setIsActive((data as any).is_active ?? true);
       }
-    } catch (error) {
-      console.error('Error loading profile:', error);
+    } catch {
+      console.error('Error loading profile');
       toast.error(t.error);
     } finally {
       setLoading(false);

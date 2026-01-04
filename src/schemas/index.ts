@@ -68,7 +68,7 @@ export const createBookingSchema = z.object({
         .min(5, 'يرجى إدخال عنوان مفصل')
         .max(200, 'العنوان طويل جداً'),
     type: z.enum(['home', 'outside'], {
-        errorMap: () => ({ message: 'يرجى اختيار نوع الخدمة' }),
+        message: 'يرجى اختيار نوع الخدمة',
     }),
     notes: z.string()
         .max(500, 'الملاحظات طويلة جداً')
@@ -196,7 +196,7 @@ export const serviceSchema = z.object({
 export const formatZodError = (error: z.ZodError): Record<string, string> => {
     const formatted: Record<string, string> = {};
 
-    error.errors.forEach((err) => {
+    error.issues.forEach((err) => {
         const path = err.path.join('.');
         formatted[path] = err.message;
     });

@@ -11,9 +11,9 @@ import { Alert, AlertDescription } from '../ui/alert';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle
 } from "../ui/dialog";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
-} from "../ui/select";
+// import {
+//   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
+// } from "../ui/select";
 import { Label } from '../ui/label';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
@@ -45,7 +45,7 @@ export default function SitterProfile({ sitter, onBack }: SitterProfileProps) {
   const [selectedDates, setSelectedDates] = useState<Date[] | undefined>(undefined);
   const [selectedTime, setSelectedTime] = useState('09:00');
   const [duration, setDuration] = useState(3);
-  const [childrenCount, setChildrenCount] = useState(1);
+  // const [childrenCount, setChildrenCount] = useState(1); // Unused
   const [newAddress, setNewAddress] = useState('');
   const [notes, setNotes] = useState('');
   const [isBooking, setIsBooking] = useState(false);
@@ -154,7 +154,7 @@ export default function SitterProfile({ sitter, onBack }: SitterProfileProps) {
         if (childrenData.length > 0) {
           // Default to first child
           setSelectedChildIds([childrenData[0].id]);
-          setChildrenCount(1);
+          // setChildrenCount(1); // Removed as it is unused
         }
       }
 

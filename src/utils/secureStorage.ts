@@ -20,7 +20,7 @@ export const secureStorage = {
     },
 
     // User Type
-    setUserType: (userType: 'client' | 'sitter' | 'admin' | null): void => {
+    setUserType: (userType: 'client' | 'sitter' | 'khala' | 'admin' | null): void => {
         if (userType) {
             sessionStorage.setItem('userType', userType);
         } else {
@@ -28,9 +28,9 @@ export const secureStorage = {
         }
     },
 
-    getUserType: (): 'client' | 'sitter' | 'admin' | null => {
+    getUserType: (): 'client' | 'sitter' | 'khala' | 'admin' | null => {
         const type = sessionStorage.getItem('userType');
-        return type as 'client' | 'sitter' | 'admin' | null;
+        return type as 'client' | 'sitter' | 'khala' | 'admin' | null;
     },
 
     clearUserType: (): void => {

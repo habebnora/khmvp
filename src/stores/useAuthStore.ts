@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { preferencesStorage, secureStorage } from '@/utils/secureStorage';
 import { monitoring } from '@/lib/monitoring';
 
-export type UserType = 'client' | 'sitter' | 'admin' | null;
+export type UserType = 'client' | 'sitter' | 'khala' | 'admin' | null;
 export type Language = 'ar' | 'en';
 export type Theme = 'light' | 'dark';
 
